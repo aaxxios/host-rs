@@ -3,10 +3,6 @@
 version = 4
 
 [[package]]
-name = "host"
-version = "0.1.0"
-
-[[package]]
 name = "host-core"
 version = "0.1.0"
 dependencies = [

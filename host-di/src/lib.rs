@@ -6,15 +6,21 @@ use std::{
     sync::Arc,
 };
 
-pub use host_macros::service;
 use crate::service_collection::ServiceCollection;
+pub use host_macros::service;
 
 pub type ErasedService = Arc<dyn Any + Send + Sync>;
 
+/// the lifetime of a dependency
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Lifetime {
+    /// service will be created once and reused for the lifetime of the host
     Singleton,
+
+    /// service will be created once and reused for the lifetime of the scope
     Scoped,
+
+    /// the service will always be created anew
     Transient,
 }
 
@@ -25,11 +31,14 @@ pub enum ResolveError {
     Construction(String),
 }
 
-pub trait ConfigHost{
+/// Host where services are registered and resolved
+pub trait ConfigHost {
     fn service_collection(&self) -> Arc<ServiceCollection>;
-    
+
     fn resolve<T: Service>(&self) -> Result<Arc<T>, ResolveError>;
 }
+
+/// A type that can be constructed by a dependency resolver
 pub trait Service: Sized + Send + Sync + 'static {
     fn construct<R: DependencyResolver>(resolver: &R) -> Result<Self, ResolveError>;
 }
@@ -39,8 +48,6 @@ pub trait DependencyResolver {
     where
         T: Service;
 }
-
-
 
 pub fn downcast<T>(value: ErasedService) -> Result<Arc<T>, ResolveError>
 where
@@ -107,11 +114,11 @@ mod tests {
         container.register::<Repository>(Lifetime::Scoped);
 
         // let host = container.build().unwrap();
-        // 
+        //
         // let scope = host.scope();
-        // 
+        //
         // let users = scope.resolve::<UserService>().unwrap();
-        // 
+        //
         // println!("database = {}", users.repository.db.name);
     }
 }

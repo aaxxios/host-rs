@@ -1,5 +1,7 @@
 use crate::service_collection::ServiceCollection;
-use crate::{ConfigHost, ErasedService, Lifetime, ResolveError, DependencyResolver, Service, downcast};
+use crate::{
+    ConfigHost, DependencyResolver, ErasedService, Lifetime, ResolveError, Service, downcast,
+};
 use std::any::TypeId;
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
@@ -48,8 +50,8 @@ impl<'a, T: ConfigHost> Scope<'a, T> {
             .ok_or(ResolveError::NotRegistered(type_id))?;
 
         match registration.lifetime {
-            Lifetime::Singleton => self.host.resolve::<S>(),
-
+            Lifetime::Singleton => self.host.resolve(),
+            Lifetime::Transient => self.host.resolve(),
             Lifetime::Scoped => {
                 if let Some(value) = self
                     .scoped
@@ -76,15 +78,6 @@ impl<'a, T: ConfigHost> Scope<'a, T> {
 
                 downcast::<S>(value)
             }
-
-            Lifetime::Transient => {
-                let value = S::construct(self)?;
-                downcast::<S>(Arc::new(value))
-            }
         }
     }
 }
-
-
-
-

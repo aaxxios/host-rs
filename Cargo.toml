@@ -1,12 +1,5 @@
-[package]
-name = "host"
-version = "0.1.0"
-edition = "2024"
-resolver = "2"
-
 [workspace]
 members = [
     "host-core", "host-di",
     "host-macros"
 ]
-[dependencies]
