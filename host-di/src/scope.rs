@@ -1,6 +1,6 @@
 use crate::service_collection::ServiceCollection;
 use crate::{
-    ConfigHost, DependencyResolver, ErasedService, Lifetime, ResolveError, Service, downcast,
+    ConfigHost, DependencyResolver, ErasedService, Lifetime, ResolveError, Service, downcast, log,
 };
 use std::any::TypeId;
 use std::collections::HashMap;
@@ -53,22 +53,20 @@ impl<'a, T: ConfigHost> Scope<'a, T> {
             Lifetime::Singleton => self.host.resolve(),
             Lifetime::Transient => self.host.resolve(),
             Lifetime::Scoped => {
-                if let Some(value) = self
-                    .scoped
-                    .read()
-                    .unwrap_or_else(|e| {
-                        //TODO: log
-                        e.into_inner()
-                    })
-                    .get(&type_id)
-                {
-                    return downcast::<S>(Arc::clone(value));
+                let value = self.scoped.read().map_err(|e| {
+                    log("cached poisoned");
+                    ResolveError::CachedPoisoned
+                })?;
+                if let Some(existing) = value.get(&type_id) {
+                    return downcast::<S>(Arc::clone(existing));
                 }
-
                 let value = S::construct(self)?;
                 let value: ErasedService = Arc::new(value);
 
-                let mut cache = self.scoped.write().unwrap();
+                let mut cache = self.scoped.write().map_err(|e| {
+                    log("cached poisoned");
+                    ResolveError::CachedPoisoned
+                })?;
 
                 if let Some(existing) = cache.get(&type_id) {
                     return downcast::<S>(Arc::clone(existing));
