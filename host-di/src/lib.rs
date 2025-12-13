@@ -1,13 +1,14 @@
 pub mod scope;
 pub mod service_collection;
 
+use crate::service_collection::ServiceCollection;
+pub use host_macros::service;
 use std::{
     any::{Any, TypeId},
     sync::Arc,
 };
-
-use crate::service_collection::ServiceCollection;
-pub use host_macros::service;
+#[cfg(feature = "logging")]
+use tracing::trace;
 
 pub type ErasedService = Arc<dyn Any + Send + Sync>;
 
@@ -29,6 +30,7 @@ pub enum ResolveError {
     NotRegistered(TypeId),
     InvalidService,
     Construction(String),
+    CachedPoisoned,
 }
 
 /// Host where services are registered and resolved
@@ -48,6 +50,14 @@ pub trait DependencyResolver {
     where
         T: Service;
 }
+
+#[cfg(feature = "logging")]
+pub fn log(message: &str) {
+    tracing::info!("{message}");
+}
+
+#[cfg(not(feature = "logging"))]
+pub fn log(_message: &str) {}
 
 pub fn downcast<T>(value: ErasedService) -> Result<Arc<T>, ResolveError>
 where

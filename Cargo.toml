@@ -3,3 +3,5 @@ members = [
     "host-core", "host-di",
     "host-macros"
 ]
+[workspace.dependencies]
+tracing = "0.1.44"
