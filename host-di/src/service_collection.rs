@@ -1,4 +1,4 @@
-use crate::{ErasedService, Lifetime, Service};
+use crate::{ErasedService, Lifetime, ResolveError, Service};
 use std::any::TypeId;
 use std::collections::HashMap;
 use std::sync::RwLock;
@@ -25,6 +25,12 @@ impl ServiceCollection {
     /// get registered services metadata
     pub fn metadata(&self) -> &HashMap<TypeId, Registration> {
         &self.registrations
+    }
+
+    pub fn get_meta(&self, type_id: TypeId) -> Result<&Registration, ResolveError> {
+        self.registrations
+            .get(&type_id)
+            .ok_or_else(|| ResolveError::NotRegistered(type_id))
     }
 
     pub fn singleton(&self) -> &RwLock<HashMap<TypeId, ErasedService>> {

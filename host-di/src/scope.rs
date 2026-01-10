@@ -45,25 +45,23 @@ impl<'a, T: ConfigHost> Scope<'a, T> {
 
         let registration = self
             .services
-            .metadata()
-            .get(&type_id)
-            .ok_or(ResolveError::NotRegistered(type_id))?;
+            .get_meta(type_id)?;
 
         match registration.lifetime {
             Lifetime::Singleton => self.host.resolve(),
             Lifetime::Transient => self.host.resolve(),
             Lifetime::Scoped => {
-                let value = self.scoped.read().map_err(|e| {
+                let cache = self.scoped.read().map_err(|_| {
                     log("cached poisoned");
                     ResolveError::CachedPoisoned
                 })?;
-                if let Some(existing) = value.get(&type_id) {
+                if let Some(existing) = cache.get(&type_id) {
                     return downcast::<S>(Arc::clone(existing));
                 }
                 let value = S::construct(self)?;
                 let value: ErasedService = Arc::new(value);
 
-                let mut cache = self.scoped.write().map_err(|e| {
+                let mut cache = self.scoped.write().map_err(|_| {
                     log("cached poisoned");
                     ResolveError::CachedPoisoned
                 })?;

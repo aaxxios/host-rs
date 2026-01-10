@@ -52,20 +52,21 @@ pub trait DependencyResolver {
 }
 
 #[cfg(feature = "logging")]
-pub fn log(message: &str) {
+pub(crate) fn log(message: &str) {
     tracing::info!("{message}");
 }
 
 #[cfg(not(feature = "logging"))]
-pub fn log(_message: &str) {}
+pub(crate) fn log(_message: &str) {}
 
 pub fn downcast<T>(value: ErasedService) -> Result<Arc<T>, ResolveError>
 where
     T: Send + Sync + 'static,
 {
-    value
-        .downcast::<T>()
-        .map_err(|_| ResolveError::InvalidService)
+    value.downcast::<T>().map_err(|e| {
+        log("invalid service");
+        ResolveError::InvalidService
+    })
 }
 
 #[cfg(test)]
