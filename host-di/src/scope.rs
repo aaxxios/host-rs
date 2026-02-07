@@ -43,9 +43,7 @@ impl<'a, T: ConfigHost> Scope<'a, T> {
     {
         let type_id = TypeId::of::<S>();
 
-        let registration = self
-            .services
-            .get_meta(type_id)?;
+        let registration = self.services.get_meta(type_id)?;
 
         match registration.lifetime {
             Lifetime::Singleton => self.host.resolve(),

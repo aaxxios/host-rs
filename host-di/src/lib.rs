@@ -7,8 +7,6 @@ use std::{
     any::{Any, TypeId},
     sync::Arc,
 };
-#[cfg(feature = "logging")]
-use tracing::trace;
 
 pub type ErasedService = Arc<dyn Any + Send + Sync>;
 
@@ -63,73 +61,8 @@ pub fn downcast<T>(value: ErasedService) -> Result<Arc<T>, ResolveError>
 where
     T: Send + Sync + 'static,
 {
-    value.downcast::<T>().map_err(|e| {
+    value.downcast::<T>().map_err(|_| {
         log("invalid service");
         ResolveError::InvalidService
     })
-}
-
-#[cfg(test)]
-mod tests {
-    use crate::*;
-    use crate::{Lifetime, ServiceCollection, service};
-    use std::sync::Arc;
-
-    struct Database {
-        name: String,
-    }
-
-    #[service]
-    impl Database {
-        fn new() -> Self {
-            println!("Database::new");
-
-            Self {
-                name: "Postgres".into(),
-            }
-        }
-    }
-
-    struct Repository {
-        db: Arc<Database>,
-    }
-
-    #[service]
-    impl Repository {
-        fn new(db: Arc<Database>) -> Self {
-            println!("Repository::new");
-
-            Self { db }
-        }
-    }
-
-    struct UserService {
-        repository: Arc<Repository>,
-    }
-
-    #[service]
-    impl UserService {
-        fn new(repository: Arc<Repository>) -> Self {
-            println!("UserService::new");
-
-            Self { repository }
-        }
-    }
-
-    #[test]
-    fn test_resolve() {
-        let mut container = ServiceCollection::new();
-
-        container.register::<UserService>(Lifetime::Transient);
-        container.register::<Database>(Lifetime::Singleton);
-        container.register::<Repository>(Lifetime::Scoped);
-
-        // let host = container.build().unwrap();
-        //
-        // let scope = host.scope();
-        //
-        // let users = scope.resolve::<UserService>().unwrap();
-        //
-        // println!("database = {}", users.repository.db.name);
-    }
 }

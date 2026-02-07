@@ -1,21 +1,11 @@
 use proc_macro::TokenStream;
 use quote::quote;
 use syn::{
-    FnArg,
-    ImplItem,
-    ItemImpl,
-    PathArguments,
-    ReturnType,
-    Type,
-    TypePath,
-    parse_macro_input,
+    FnArg, ImplItem, ItemImpl, PathArguments, ReturnType, Type, TypePath, parse_macro_input,
 };
 
 #[proc_macro_attribute]
-pub fn service(
-    _attr: TokenStream,
-    input: TokenStream,
-) -> TokenStream {
+pub fn service(_attr: TokenStream, input: TokenStream) -> TokenStream {
     let item = parse_macro_input!(input as ItemImpl);
 
     match expand_service(item) {
@@ -31,16 +21,11 @@ fn expand_service(item: ItemImpl) -> syn::Result<proc_macro2::TokenStream> {
         .items
         .iter()
         .find_map(|item| match item {
-            ImplItem::Fn(method) if method.sig.ident == "new" => {
-                Some(method)
-            }
+            ImplItem::Fn(method) if method.sig.ident == "new" => Some(method),
             _ => None,
         })
         .ok_or_else(|| {
-            syn::Error::new_spanned(
-                &item.self_ty,
-                "a #[service] impl must contain fn new(...)",
-            )
+            syn::Error::new_spanned(&item.self_ty, "a #[service] impl must contain fn new(...)")
         })?;
 
     if constructor.sig.asyncness.is_some() {
@@ -121,12 +106,7 @@ fn extract_arc_inner_type(ty: &Type) -> syn::Result<Type> {
     let segment = path
         .segments
         .last()
-        .ok_or_else(|| {
-            syn::Error::new_spanned(
-                ty,
-                "invalid dependency type",
-            )
-        })?;
+        .ok_or_else(|| syn::Error::new_spanned(ty, "invalid dependency type"))?;
 
     if segment.ident != "Arc" {
         return Err(syn::Error::new_spanned(
@@ -135,18 +115,14 @@ fn extract_arc_inner_type(ty: &Type) -> syn::Result<Type> {
         ));
     }
 
-    let PathArguments::AngleBracketed(arguments) =
-        &segment.arguments
-    else {
+    let PathArguments::AngleBracketed(arguments) = &segment.arguments else {
         return Err(syn::Error::new_spanned(
             ty,
             "Arc<T> requires a type parameter",
         ));
     };
 
-    let Some(syn::GenericArgument::Type(inner)) =
-        arguments.args.first()
-    else {
+    let Some(syn::GenericArgument::Type(inner)) = arguments.args.first() else {
         return Err(syn::Error::new_spanned(
             ty,
             "Arc<T> requires a type parameter",

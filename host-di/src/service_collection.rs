@@ -14,6 +14,12 @@ pub struct ServiceCollection {
     singletons: RwLock<HashMap<TypeId, ErasedService>>,
 }
 
+impl Default for ServiceCollection {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl ServiceCollection {
     pub fn new() -> Self {
         Self {
@@ -30,7 +36,7 @@ impl ServiceCollection {
     pub fn get_meta(&self, type_id: TypeId) -> Result<&Registration, ResolveError> {
         self.registrations
             .get(&type_id)
-            .ok_or_else(|| ResolveError::NotRegistered(type_id))
+            .ok_or(ResolveError::NotRegistered(type_id))
     }
 
     pub fn singleton(&self) -> &RwLock<HashMap<TypeId, ErasedService>> {

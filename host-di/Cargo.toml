@@ -1,7 +1,8 @@
 [package]
 name = "host-di"
 version = "0.1.0"
-edition = "2024"
+edition.workspace = true
+rust-version.workspace = true
 
 [dependencies]
 host-macros = { path = "../host-macros" }
@@ -9,3 +10,6 @@ tracing = { workspace = true, optional = true }
 
 [features]
 logging = ["dep:tracing"]
+
+[lints]
+workspace = true

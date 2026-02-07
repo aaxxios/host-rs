@@ -1,7 +1,24 @@
 [workspace]
-members = [
-    "host-core", "host-di",
-    "host-macros"
-]
+resolver = "3"
+members = ["host-core", "host-di", "host-macros"]
+
+[workspace.package]
+edition = "2024"
+rust-version = "1.85"
+
 [workspace.dependencies]
+proc-macro2 = "1.0.107"
+quote = "1.0.47"
+syn = { version = "3.0.6", features = ["full"] }
 tracing = "0.1.44"
+
+[workspace.lints.rust]
+unsafe_code = "deny"
+
+[workspace.lints.clippy]
+unwrap_used = "deny"
+expect_used = "deny"
+panic = "deny"
+todo = "deny"
+unimplemented = "deny"
+undocumented_unsafe_blocks = "deny"
