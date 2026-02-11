@@ -49,12 +49,14 @@ impl<'a, T: ConfigHost> Scope<'a, T> {
             Lifetime::Singleton => self.host.resolve(),
             Lifetime::Transient => self.host.resolve(),
             Lifetime::Scoped => {
-                let cache = self.scoped.read().map_err(|_| {
-                    log("cached poisoned");
-                    ResolveError::CachedPoisoned
-                })?;
-                if let Some(existing) = cache.get(&type_id) {
-                    return downcast::<S>(Arc::clone(existing));
+                {
+                    let cache = self.scoped.read().map_err(|_| {
+                        log("cached poisoned");
+                        ResolveError::CachedPoisoned
+                    })?;
+                    if let Some(existing) = cache.get(&type_id) {
+                        return downcast::<S>(Arc::clone(existing));
+                    }
                 }
                 let value = S::construct(self)?;
                 let value: ErasedService = Arc::new(value);

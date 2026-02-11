@@ -1,3 +1,6 @@
+mod builder;
+
+pub use builder::HostBuilder;
 use host_di::scope::Scope;
 use host_di::service_collection::ServiceCollection;
 use host_di::{
@@ -37,13 +40,14 @@ impl Host {
 
         match registration.lifetime {
             Lifetime::Singleton => {
-                let cache = self.services.singleton().read().map_err(|_| {
-                    log("cached poisoned");
-                    ResolveError::CachedPoisoned
-                })?;
-
-                if let Some(value) = cache.get(&type_id) {
-                    return downcast::<T>(Arc::clone(value));
+                {
+                    let cache = self.services.singleton().read().map_err(|_| {
+                        log("cached poisoned");
+                        ResolveError::CachedPoisoned
+                    })?;
+                    if let Some(value) = cache.get(&type_id) {
+                        return downcast::<T>(Arc::clone(value));
+                    }
                 }
 
                 let value = T::construct(self)?;
@@ -93,5 +97,57 @@ impl DependencyResolver for Host {
         T: Service,
     {
         self.resolve::<T>()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use host_di::DependencyResolver;
+    use std::sync::mpsc;
+    use std::thread;
+    use std::time::Duration;
+
+    struct Database;
+
+    impl Service for Database {
+        fn construct<R: DependencyResolver>(_: &R) -> Result<Self, ResolveError> {
+            Ok(Database)
+        }
+    }
+
+    fn within_timeout(body: impl FnOnce() + Send + 'static) {
+        let (tx, rx) = mpsc::channel();
+        thread::spawn(move || {
+            body();
+            let _ = tx.send(());
+        });
+        rx.recv_timeout(Duration::from_secs(5))
+            .expect("resolution deadlocked");
+    }
+
+    #[test]
+    fn singleton_resolves_without_deadlock() {
+        within_timeout(|| {
+            let mut builder = HostBuilder::new();
+            builder.services().register::<Database>(Lifetime::Singleton);
+            let host = builder.build();
+            let first = host.resolve::<Database>().unwrap();
+            let second = host.resolve::<Database>().unwrap();
+            assert!(Arc::ptr_eq(&first, &second));
+        });
+    }
+
+    #[test]
+    fn scoped_resolves_without_deadlock() {
+        within_timeout(|| {
+            let mut builder = HostBuilder::new();
+            builder.services().register::<Database>(Lifetime::Scoped);
+            let host = builder.build();
+            let scope = host.scope();
+            let first = scope.resolve::<Database>().unwrap();
+            let second = scope.resolve::<Database>().unwrap();
+            assert!(Arc::ptr_eq(&first, &second));
+        });
     }
 }
