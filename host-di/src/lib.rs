@@ -1,68 +1,30 @@
-pub mod scope;
-pub mod service_collection;
+//! Dependency injection container: register services in a
+//! [`ServiceCollection`], build it into a [`ServiceProvider`], then resolve.
 
-use crate::service_collection::ServiceCollection;
-pub use host_macros::service;
-use std::{
-    any::{Any, TypeId},
-    sync::Arc,
-};
+#![warn(missing_docs)]
 
-pub type ErasedService = Arc<dyn Any + Send + Sync>;
+mod collection;
+mod container;
+mod error;
+mod key;
+mod resolver;
+mod service;
+mod sync;
 
-/// the lifetime of a dependency
+pub use collection::ServiceCollection;
+pub use container::ServiceProvider;
+pub use error::{BoxError, BuildError, BuildIssue, ResolveError};
+pub use key::Dependency;
+pub use resolver::Resolver;
+pub use service::Service;
+
+/// How long a resolved instance is reused.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Lifetime {
-    /// service will be created once and reused for the lifetime of the host
+    /// One instance for the life of the provider.
     Singleton,
-
-    /// service will be created once and reused for the lifetime of the scope
+    /// One instance per scope.
     Scoped,
-
-    /// the service will always be created anew
+    /// A new instance on every resolution.
     Transient,
-}
-
-#[derive(Debug)]
-pub enum ResolveError {
-    NotRegistered(TypeId),
-    InvalidService,
-    Construction(String),
-    CachedPoisoned,
-}
-
-/// Host where services are registered and resolved
-pub trait ConfigHost {
-    fn service_collection(&self) -> Arc<ServiceCollection>;
-
-    fn resolve<T: Service>(&self) -> Result<Arc<T>, ResolveError>;
-}
-
-/// A type that can be constructed by a dependency resolver
-pub trait Service: Sized + Send + Sync + 'static {
-    fn construct<R: DependencyResolver>(resolver: &R) -> Result<Self, ResolveError>;
-}
-
-pub trait DependencyResolver {
-    fn resolve<T>(&self) -> Result<Arc<T>, ResolveError>
-    where
-        T: Service;
-}
-
-#[cfg(feature = "logging")]
-pub(crate) fn log(message: &str) {
-    tracing::info!("{message}");
-}
-
-#[cfg(not(feature = "logging"))]
-pub(crate) fn log(_message: &str) {}
-
-pub fn downcast<T>(value: ErasedService) -> Result<Arc<T>, ResolveError>
-where
-    T: Send + Sync + 'static,
-{
-    value.downcast::<T>().map_err(|_| {
-        log("invalid service");
-        ResolveError::InvalidService
-    })
 }
