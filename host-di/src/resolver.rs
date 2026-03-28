@@ -1,8 +1,10 @@
 use crate::collection::Registration;
-use crate::container::{Container, Erased};
+use crate::container::{Container, CreationLog, Erased};
 use crate::key::Key;
+use crate::scope::ScopeState;
+use crate::sync::ConstructionLock;
 use crate::{BoxError, Lifetime, ResolveError};
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 
 /// Resolves dependencies while a service is being constructed.
 ///
@@ -10,6 +12,7 @@ use std::sync::Arc;
 /// so the chain of services under construction lives on the stack.
 pub struct Resolver<'a> {
     container: &'a Container,
+    scope: Option<&'a ScopeState>,
     parent: Option<&'a Resolver<'a>>,
     service: Option<Key>,
 }
@@ -18,6 +21,16 @@ impl<'a> Resolver<'a> {
     pub(crate) fn root(container: &'a Container) -> Self {
         Self {
             container,
+            scope: None,
+            parent: None,
+            service: None,
+        }
+    }
+
+    pub(crate) fn scoped(container: &'a Container, scope: &'a ScopeState) -> Self {
+        Self {
+            container,
+            scope: Some(scope),
             parent: None,
             service: None,
         }
@@ -34,12 +47,8 @@ impl<'a> Resolver<'a> {
 
         let instance = match registration.lifetime {
             Lifetime::Singleton => self.singleton(registration)?,
-            Lifetime::Scoped => {
-                return Err(ResolveError::ScopedFromRoot {
-                    path: self.path_to(key),
-                });
-            }
-            Lifetime::Transient => self.construct(registration)?,
+            Lifetime::Scoped => self.scoped_instance(registration)?,
+            Lifetime::Transient => self.construct(registration, self.scope)?,
         };
 
         registration
@@ -60,7 +69,44 @@ impl<'a> Resolver<'a> {
     }
 
     fn singleton(&self, registration: &Registration) -> Result<Erased, ResolveError> {
-        let Some(slot) = self.container.singletons.get(registration.slot) else {
+        let container = self.container;
+        let slot = container.singletons.get(registration.slot);
+        self.cached(
+            registration,
+            slot,
+            &container.construction,
+            &container.created,
+            None,
+        )
+    }
+
+    fn scoped_instance(&self, registration: &Registration) -> Result<Erased, ResolveError> {
+        let Some(scope) = self.scope else {
+            return Err(ResolveError::ScopedFromRoot {
+                path: self.path_to(registration.key),
+            });
+        };
+        let slot = scope.slot(self.container, registration.slot);
+        self.cached(
+            registration,
+            slot,
+            &scope.construction,
+            &scope.created,
+            Some(scope),
+        )
+    }
+
+    /// Returns the instance in `slot`, constructing it under `lock` on first use.
+    /// Failed constructions leave the slot empty so the next resolution retries.
+    fn cached(
+        &self,
+        registration: &Registration,
+        slot: Option<&OnceLock<Erased>>,
+        lock: &ConstructionLock,
+        created: &CreationLog,
+        scope: Option<&ScopeState>,
+    ) -> Result<Erased, ResolveError> {
+        let Some(slot) = slot else {
             return Err(ResolveError::NotRegistered {
                 path: self.path_to(registration.key),
             });
@@ -69,20 +115,25 @@ impl<'a> Resolver<'a> {
             return Ok(Arc::clone(instance));
         }
 
-        let _guard = self.container.construction.lock();
+        let _guard = lock.lock();
         if let Some(instance) = slot.get() {
             return Ok(Arc::clone(instance));
         }
-        let instance = self.construct(registration)?;
+        let instance = self.construct(registration, scope)?;
         if slot.set(Arc::clone(&instance)).is_ok() {
-            self.container.record_singleton(registration.slot);
+            created.record(registration.slot);
         }
         Ok(instance)
     }
 
-    fn construct(&self, registration: &Registration) -> Result<Erased, ResolveError> {
+    fn construct(
+        &self,
+        registration: &Registration,
+        scope: Option<&ScopeState>,
+    ) -> Result<Erased, ResolveError> {
         let frame = Resolver {
             container: self.container,
+            scope,
             parent: Some(self),
             service: Some(registration.key),
         };

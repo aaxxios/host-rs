@@ -1,5 +1,6 @@
 use crate::collection::Registration;
 use crate::key::{Key, KeyMap};
+use crate::scope::Scope;
 use crate::sync::ConstructionLock;
 use crate::{Lifetime, ResolveError, Resolver};
 use std::any::Any;
@@ -14,19 +15,27 @@ pub(crate) type ConstructFn =
 pub(crate) struct Container {
     registrations: Box<[Registration]>,
     lookup: KeyMap<usize>,
+    pub(crate) scoped_count: usize,
     pub(crate) singletons: Box<[OnceLock<Erased>]>,
     pub(crate) construction: ConstructionLock,
-    created: Mutex<Vec<usize>>,
+    pub(crate) created: CreationLog,
 }
 
 impl Container {
     pub(crate) fn new(mut registrations: Vec<Registration>) -> Self {
         let mut lookup = KeyMap::default();
-        let mut singletons = 0;
+        let (mut singletons, mut scoped) = (0, 0);
         for (index, registration) in registrations.iter_mut().enumerate() {
-            if registration.lifetime == Lifetime::Singleton {
-                registration.slot = singletons;
-                singletons += 1;
+            match registration.lifetime {
+                Lifetime::Singleton => {
+                    registration.slot = singletons;
+                    singletons += 1;
+                }
+                Lifetime::Scoped => {
+                    registration.slot = scoped;
+                    scoped += 1;
+                }
+                Lifetime::Transient => {}
             }
             lookup.insert(registration.key, index);
         }
@@ -34,9 +43,10 @@ impl Container {
         Self {
             registrations: registrations.into_boxed_slice(),
             lookup,
+            scoped_count: scoped,
             singletons: (0..singletons).map(|_| OnceLock::new()).collect(),
             construction: ConstructionLock::default(),
-            created: Mutex::default(),
+            created: CreationLog::default(),
         }
     }
 
@@ -45,9 +55,15 @@ impl Container {
             .get(&key)
             .and_then(|&index| self.registrations.get(index))
     }
+}
 
-    pub(crate) fn record_singleton(&self, slot: usize) {
-        self.created
+/// Slot indices in the order their instances were created.
+#[derive(Default)]
+pub(crate) struct CreationLog(Mutex<Vec<usize>>);
+
+impl CreationLog {
+    pub(crate) fn record(&self, slot: usize) {
+        self.0
             .lock()
             .unwrap_or_else(PoisonError::into_inner)
             .push(slot);
@@ -70,5 +86,10 @@ impl ServiceProvider {
     /// Resolves a singleton or transient service.
     pub fn resolve<T: ?Sized + Send + Sync + 'static>(&self) -> Result<Arc<T>, ResolveError> {
         Resolver::root(&self.container).resolve()
+    }
+
+    /// Creates a scope for resolving scoped services.
+    pub fn create_scope(&self) -> Scope {
+        Scope::new(Arc::clone(&self.container))
     }
 }

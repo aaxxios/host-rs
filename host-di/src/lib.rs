@@ -8,6 +8,7 @@ mod container;
 mod error;
 mod key;
 mod resolver;
+mod scope;
 mod service;
 mod sync;
 
@@ -16,6 +17,7 @@ pub use container::ServiceProvider;
 pub use error::{BoxError, BuildError, BuildIssue, ResolveError};
 pub use key::Dependency;
 pub use resolver::Resolver;
+pub use scope::Scope;
 pub use service::Service;
 
 /// How long a resolved instance is reused.
