@@ -1,6 +1,6 @@
 use crate::container::{ConstructFn, Container, Erased};
 use crate::key::Key;
-use crate::{BuildError, Lifetime, Service, ServiceProvider};
+use crate::{BoxError, BuildError, Lifetime, ResolveError, Resolver, Service, ServiceProvider};
 use std::any::Any;
 use std::sync::Arc;
 
@@ -19,11 +19,16 @@ pub struct ServiceCollection {
 pub(crate) struct Registration {
     pub(crate) key: Key,
     pub(crate) lifetime: Lifetime,
-    pub(crate) construct: ConstructFn,
+    pub(crate) source: Source,
     /// A `fn(Erased) -> Option<Arc<I>>` for the registered service type `I`.
     pub(crate) cast: Box<dyn Any + Send + Sync>,
     /// Index into the storage of this registration's lifetime, set by the container.
     pub(crate) slot: usize,
+}
+
+pub(crate) enum Source {
+    Construct(ConstructFn),
+    Instance(Erased),
 }
 
 impl ServiceCollection {
@@ -47,18 +52,73 @@ impl ServiceCollection {
         self.add::<T>(Lifetime::Transient)
     }
 
+    /// Registers a factory for `T` with one instance shared for the life of the
+    /// provider.
+    ///
+    /// Errors from resolving dependencies inside the factory keep their original
+    /// path; any other error is reported as a construction failure of `T`.
+    pub fn add_singleton_with<T, F>(&mut self, factory: F) -> &mut Self
+    where
+        T: Send + Sync + 'static,
+        F: Fn(&Resolver<'_>) -> Result<T, BoxError> + Send + Sync + 'static,
+    {
+        self.add_factory(Lifetime::Singleton, factory)
+    }
+
+    /// Registers a factory for `T` with one instance per scope.
+    pub fn add_scoped_with<T, F>(&mut self, factory: F) -> &mut Self
+    where
+        T: Send + Sync + 'static,
+        F: Fn(&Resolver<'_>) -> Result<T, BoxError> + Send + Sync + 'static,
+    {
+        self.add_factory(Lifetime::Scoped, factory)
+    }
+
+    /// Registers a factory for `T` that runs on every resolution.
+    pub fn add_transient_with<T, F>(&mut self, factory: F) -> &mut Self
+    where
+        T: Send + Sync + 'static,
+        F: Fn(&Resolver<'_>) -> Result<T, BoxError> + Send + Sync + 'static,
+    {
+        self.add_factory(Lifetime::Transient, factory)
+    }
+
+    /// Registers an already constructed singleton.
+    pub fn add_singleton_instance<T: Send + Sync + 'static>(&mut self, instance: T) -> &mut Self {
+        self.push::<T>(Lifetime::Singleton, Source::Instance(Arc::new(instance)))
+    }
+
     /// Freezes the registrations into a provider.
     pub fn build(self) -> Result<ServiceProvider, BuildError> {
         Ok(ServiceProvider::new(Container::new(self.registrations)))
     }
 
     fn add<T: Service>(&mut self, lifetime: Lifetime) -> &mut Self {
+        let construct: ConstructFn =
+            Arc::new(|resolver| T::construct(resolver).map(|service| Arc::new(service) as Erased));
+        self.push::<T>(lifetime, Source::Construct(construct))
+    }
+
+    fn add_factory<T, F>(&mut self, lifetime: Lifetime, factory: F) -> &mut Self
+    where
+        T: Send + Sync + 'static,
+        F: Fn(&Resolver<'_>) -> Result<T, BoxError> + Send + Sync + 'static,
+    {
+        let construct: ConstructFn = Arc::new(move |resolver| match factory(resolver) {
+            Ok(service) => Ok(Arc::new(service) as Erased),
+            Err(error) => Err(match error.downcast::<ResolveError>() {
+                Ok(error) => *error,
+                Err(error) => resolver.construction_error(error),
+            }),
+        });
+        self.push::<T>(lifetime, Source::Construct(construct))
+    }
+
+    fn push<T: Send + Sync + 'static>(&mut self, lifetime: Lifetime, source: Source) -> &mut Self {
         self.registrations.push(Registration {
             key: Key::of::<T>(),
             lifetime,
-            construct: Arc::new(|resolver| {
-                T::construct(resolver).map(|service| Arc::new(service) as Erased)
-            }),
+            source,
             cast: concrete_cast::<T>(),
             slot: 0,
         });

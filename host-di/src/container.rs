@@ -1,4 +1,4 @@
-use crate::collection::Registration;
+use crate::collection::{Registration, Source};
 use crate::key::{Key, KeyMap};
 use crate::scope::Scope;
 use crate::sync::ConstructionLock;
@@ -40,14 +40,23 @@ impl Container {
             lookup.insert(registration.key, index);
         }
 
-        Self {
+        let container = Self {
             registrations: registrations.into_boxed_slice(),
             lookup,
             scoped_count: scoped,
             singletons: (0..singletons).map(|_| OnceLock::new()).collect(),
             construction: ConstructionLock::default(),
             created: CreationLog::default(),
+        };
+        for registration in &container.registrations {
+            if let Source::Instance(instance) = &registration.source {
+                let slot = container.singletons.get(registration.slot);
+                if slot.is_some_and(|slot| slot.set(Arc::clone(instance)).is_ok()) {
+                    container.created.record(registration.slot);
+                }
+            }
         }
+        container
     }
 
     pub(crate) fn registration(&self, key: Key) -> Option<&Registration> {

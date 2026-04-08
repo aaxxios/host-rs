@@ -1,4 +1,4 @@
-use crate::collection::Registration;
+use crate::collection::{Registration, Source};
 use crate::container::{Container, CreationLog, Erased};
 use crate::key::Key;
 use crate::scope::ScopeState;
@@ -137,7 +137,10 @@ impl<'a> Resolver<'a> {
             parent: Some(self),
             service: Some(registration.key),
         };
-        let result = (registration.construct)(&frame);
+        let result = match &registration.source {
+            Source::Construct(construct) => construct(&frame),
+            Source::Instance(instance) => Ok(Arc::clone(instance)),
+        };
 
         #[cfg(feature = "logging")]
         match &result {
