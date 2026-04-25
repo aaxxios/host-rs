@@ -6,6 +6,7 @@
 mod collection;
 mod container;
 mod error;
+mod graph;
 mod key;
 mod resolver;
 mod scope;

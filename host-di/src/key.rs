@@ -78,4 +78,8 @@ impl Dependency {
     pub fn type_name(&self) -> &'static str {
         self.key.name
     }
+
+    pub(crate) fn key(&self) -> Key {
+        self.key
+    }
 }

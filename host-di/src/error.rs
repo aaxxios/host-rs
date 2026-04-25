@@ -78,6 +78,10 @@ pub struct BuildError {
 }
 
 impl BuildError {
+    pub(crate) fn new(issues: Vec<BuildIssue>) -> Self {
+        Self { issues }
+    }
+
     /// Every problem found, in registration order.
     pub fn issues(&self) -> &[BuildIssue] {
         &self.issues

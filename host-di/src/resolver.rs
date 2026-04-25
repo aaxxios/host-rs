@@ -131,6 +131,9 @@ impl<'a> Resolver<'a> {
         registration: &Registration,
         scope: Option<&ScopeState>,
     ) -> Result<Erased, ResolveError> {
+        if let Some(path) = self.cycle_to(registration.key) {
+            return Err(ResolveError::Cycle { path });
+        }
         let frame = Resolver {
             container: self.container,
             scope,
@@ -172,6 +175,21 @@ impl<'a> Resolver<'a> {
         }
         path.reverse();
         path
+    }
+
+    /// The cycle closed by constructing `key` again, if it is already under
+    /// construction in this chain.
+    fn cycle_to(&self, key: Key) -> Option<Vec<&'static str>> {
+        let mut frame = Some(self);
+        while let Some(current) = frame {
+            if current.service == Some(key) {
+                let path = self.path_to(key);
+                let start = path.iter().position(|&name| name == key.name)?;
+                return Some(path[start..].to_vec());
+            }
+            frame = current.parent;
+        }
+        None
     }
 
     fn path_to(&self, key: Key) -> Vec<&'static str> {

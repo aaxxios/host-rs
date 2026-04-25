@@ -1,6 +1,10 @@
 use crate::container::{ConstructFn, Container, Erased};
+use crate::graph::find_cycles;
 use crate::key::Key;
-use crate::{BoxError, BuildError, Lifetime, ResolveError, Resolver, Service, ServiceProvider};
+use crate::{
+    BoxError, BuildError, BuildIssue, Dependency, Lifetime, ResolveError, Resolver, Service,
+    ServiceProvider,
+};
 use std::any::Any;
 use std::sync::Arc;
 
@@ -20,6 +24,8 @@ pub(crate) struct Registration {
     pub(crate) key: Key,
     pub(crate) lifetime: Lifetime,
     pub(crate) source: Source,
+    /// Declared dependencies; `None` for factories and instances.
+    pub(crate) dependencies: Option<fn() -> Vec<Dependency>>,
     /// A `fn(Erased) -> Option<Arc<I>>` for the registered service type `I`.
     pub(crate) cast: Box<dyn Any + Send + Sync>,
     /// Index into the storage of this registration's lifetime, set by the container.
@@ -85,18 +91,37 @@ impl ServiceCollection {
 
     /// Registers an already constructed singleton.
     pub fn add_singleton_instance<T: Send + Sync + 'static>(&mut self, instance: T) -> &mut Self {
-        self.push::<T>(Lifetime::Singleton, Source::Instance(Arc::new(instance)))
+        self.push::<T>(
+            Lifetime::Singleton,
+            Source::Instance(Arc::new(instance)),
+            None,
+        )
     }
 
     /// Freezes the registrations into a provider.
+    ///
+    /// Fails if registered services depend on each other in a cycle.
     pub fn build(self) -> Result<ServiceProvider, BuildError> {
+        let cycles = find_cycles(&self.registrations);
+        if !cycles.is_empty() {
+            return Err(BuildError::new(
+                cycles
+                    .into_iter()
+                    .map(|path| BuildIssue::Cycle { path })
+                    .collect(),
+            ));
+        }
         Ok(ServiceProvider::new(Container::new(self.registrations)))
     }
 
     fn add<T: Service>(&mut self, lifetime: Lifetime) -> &mut Self {
         let construct: ConstructFn =
             Arc::new(|resolver| T::construct(resolver).map(|service| Arc::new(service) as Erased));
-        self.push::<T>(lifetime, Source::Construct(construct))
+        self.push::<T>(
+            lifetime,
+            Source::Construct(construct),
+            Some(T::dependencies),
+        )
     }
 
     fn add_factory<T, F>(&mut self, lifetime: Lifetime, factory: F) -> &mut Self
@@ -111,14 +136,20 @@ impl ServiceCollection {
                 Err(error) => resolver.construction_error(error),
             }),
         });
-        self.push::<T>(lifetime, Source::Construct(construct))
+        self.push::<T>(lifetime, Source::Construct(construct), None)
     }
 
-    fn push<T: Send + Sync + 'static>(&mut self, lifetime: Lifetime, source: Source) -> &mut Self {
+    fn push<T: Send + Sync + 'static>(
+        &mut self,
+        lifetime: Lifetime,
+        source: Source,
+        dependencies: Option<fn() -> Vec<Dependency>>,
+    ) -> &mut Self {
         self.registrations.push(Registration {
             key: Key::of::<T>(),
             lifetime,
             source,
+            dependencies,
             cast: concrete_cast::<T>(),
             slot: 0,
         });
