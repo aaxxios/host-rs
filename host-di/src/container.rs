@@ -77,6 +77,29 @@ impl CreationLog {
             .unwrap_or_else(PoisonError::into_inner)
             .push(slot);
     }
+
+    pub(crate) fn take(&mut self) -> Vec<usize> {
+        std::mem::take(self.0.get_mut().unwrap_or_else(PoisonError::into_inner))
+    }
+}
+
+/// Releases `slots` in reverse order of creation.
+pub(crate) fn release(slots: &mut [OnceLock<Erased>], created: &mut CreationLog) {
+    for slot in created.take().into_iter().rev() {
+        if let Some(slot) = slots.get_mut(slot) {
+            drop(slot.take());
+        }
+    }
+}
+
+impl Drop for Container {
+    fn drop(&mut self) {
+        release(&mut self.singletons, &mut self.created);
+        // Registered instances were created at build, before anything else, so
+        // they are released last, latest registration first.
+        let registrations = std::mem::take(&mut self.registrations).into_vec();
+        registrations.into_iter().rev().for_each(drop);
+    }
 }
 
 /// The root of a built container. Cheap to clone.

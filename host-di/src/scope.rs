@@ -1,4 +1,4 @@
-use crate::container::{Container, CreationLog, Erased};
+use crate::container::{Container, CreationLog, Erased, release};
 use crate::sync::ConstructionLock;
 use crate::{ResolveError, Resolver};
 use std::sync::{Arc, OnceLock};
@@ -44,5 +44,13 @@ impl ScopeState {
                     .collect()
             })
             .get(index)
+    }
+}
+
+impl Drop for ScopeState {
+    fn drop(&mut self) {
+        if let Some(slots) = self.slots.get_mut() {
+            release(slots, &mut self.created);
+        }
     }
 }
