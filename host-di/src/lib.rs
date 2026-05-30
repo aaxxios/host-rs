@@ -21,6 +21,12 @@ pub use resolver::Resolver;
 pub use scope::Scope;
 pub use service::Service;
 
+#[doc(hidden)]
+pub mod __private {
+    pub use crate::service::Inject;
+    pub use crate::{Dependency, ResolveError, Resolver, Service};
+}
+
 /// How long a resolved instance is reused.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Lifetime {

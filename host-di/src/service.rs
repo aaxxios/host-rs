@@ -1,4 +1,5 @@
 use crate::{Dependency, ResolveError, Resolver};
+use std::sync::Arc;
 
 /// A type the container can construct.
 ///
@@ -11,4 +12,27 @@ pub trait Service: Sized + Send + Sync + 'static {
 
     /// Builds the service, resolving its dependencies through `resolver`.
     fn construct(resolver: &Resolver<'_>) -> Result<Self, ResolveError>;
+}
+
+/// A value the container can supply as a field or constructor argument.
+#[doc(hidden)]
+#[diagnostic::on_unimplemented(
+    message = "`{Self}` cannot be injected",
+    label = "not a dependency",
+    note = "fields must be `Arc<T>`; use `#[service(constructor = ...)]` for other fields"
+)]
+pub trait Inject: Sized {
+    fn dependency() -> Dependency;
+
+    fn inject(resolver: &Resolver<'_>) -> Result<Self, ResolveError>;
+}
+
+impl<T: ?Sized + Send + Sync + 'static> Inject for Arc<T> {
+    fn dependency() -> Dependency {
+        Dependency::on::<T>()
+    }
+
+    fn inject(resolver: &Resolver<'_>) -> Result<Self, ResolveError> {
+        resolver.resolve()
+    }
 }
