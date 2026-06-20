@@ -68,6 +68,15 @@ impl<'a> Resolver<'a> {
         }
     }
 
+    /// Like [`construction_error`](Self::construction_error), but passes a
+    /// dependency's `ResolveError` through so its path is kept.
+    pub(crate) fn failure(&self, error: BoxError) -> ResolveError {
+        match error.downcast::<ResolveError>() {
+            Ok(error) => *error,
+            Err(error) => self.construction_error(error),
+        }
+    }
+
     fn singleton(&self, registration: &Registration) -> Result<Erased, ResolveError> {
         let container = self.container;
         let slot = container.singletons.get(registration.slot);

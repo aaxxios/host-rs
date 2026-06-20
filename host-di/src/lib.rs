@@ -23,7 +23,9 @@ pub use service::Service;
 
 #[doc(hidden)]
 pub mod __private {
-    pub use crate::service::Inject;
+    pub use crate::service::{
+        Constructor, ConstructorOutput, Inject, call_constructor, constructor_dependencies,
+    };
     pub use crate::{Dependency, ResolveError, Resolver, Service};
 }
 

@@ -7,10 +7,14 @@ mod parse;
 
 use proc_macro::TokenStream;
 
-/// Derives `Service` for a struct whose fields are all injected.
+/// Derives `Service` for a struct.
 ///
-/// Every field must be a dependency such as `Arc<T>`. Options:
+/// By default every field is injected and must be a dependency such as
+/// `Arc<T>`. Options:
 ///
+/// - `#[service(constructor = name)]`: build the struct with an associated
+///   function (or any function path) instead. Its parameters are injected, and
+///   it returns `Self` or `Result<Self, E>`.
 /// - `#[service(crate = path)]`: path to the `host` crate when it is renamed or
 ///   re-exported.
 #[proc_macro_derive(Service, attributes(service))]

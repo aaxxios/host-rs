@@ -14,25 +14,19 @@ pub(crate) fn expand(input: DeriveInput) -> syn::Result<TokenStream> {
             "`#[derive(Service)]` supports structs only",
         ));
     };
-    if let Some(constructor) = &options.constructor {
-        return Err(Error::new_spanned(
-            constructor,
-            "named constructors are not supported yet",
-        ));
-    }
-
-    let types: Vec<_> = data.fields.iter().map(|field| &field.ty).collect();
-    let inject = quote!(#private::Inject>::inject(resolver)?);
-    let value = match &data.fields {
-        Fields::Named(fields) => {
-            let names = fields.named.iter().map(|field| &field.ident);
-            quote!(Self { #(#names: <#types as #inject),* })
+    let (dependencies, construct) = match &options.constructor {
+        Some(constructor) => {
+            // A bare name refers to an associated function of the struct.
+            let constructor = match constructor.get_ident() {
+                Some(name) => quote!(Self::#name),
+                None => quote!(#constructor),
+            };
+            (
+                quote!(#private::constructor_dependencies::<Self, _, _>(&#constructor)),
+                quote!(#private::call_constructor::<Self, _, _>(&#constructor, resolver)),
+            )
         }
-        Fields::Unnamed(_) => quote!(Self(#(<#types as #inject),*)),
-        Fields::Unit => quote!({
-            let _ = resolver;
-            Self
-        }),
+        None => fields_constructor(&data.fields, &private),
     };
 
     let ident = &input.ident;
@@ -47,14 +41,34 @@ pub(crate) fn expand(input: DeriveInput) -> syn::Result<TokenStream> {
         #[automatically_derived]
         impl #impl_generics #private::Service for #ident #ty_generics #where_clause {
             fn dependencies() -> ::std::vec::Vec<#private::Dependency> {
-                ::std::vec![#(<#types as #private::Inject>::dependency()),*]
+                #dependencies
             }
 
             fn construct(
                 resolver: &#private::Resolver<'_>,
             ) -> ::core::result::Result<Self, #private::ResolveError> {
-                ::core::result::Result::Ok(#value)
+                #construct
             }
         }
     })
+}
+
+fn fields_constructor(fields: &Fields, private: &TokenStream) -> (TokenStream, TokenStream) {
+    let types: Vec<_> = fields.iter().map(|field| &field.ty).collect();
+    let inject = quote!(#private::Inject>::inject(resolver)?);
+    let value = match fields {
+        Fields::Named(fields) => {
+            let names = fields.named.iter().map(|field| &field.ident);
+            quote!(Self { #(#names: <#types as #inject),* })
+        }
+        Fields::Unnamed(_) => quote!(Self(#(<#types as #inject),*)),
+        Fields::Unit => quote!({
+            let _ = resolver;
+            Self
+        }),
+    };
+    (
+        quote!(::std::vec![#(<#types as #private::Inject>::dependency()),*]),
+        quote!(::core::result::Result::Ok(#value)),
+    )
 }

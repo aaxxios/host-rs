@@ -2,8 +2,7 @@ use crate::container::{ConstructFn, Container, Erased};
 use crate::graph::find_cycles;
 use crate::key::Key;
 use crate::{
-    BoxError, BuildError, BuildIssue, Dependency, Lifetime, ResolveError, Resolver, Service,
-    ServiceProvider,
+    BoxError, BuildError, BuildIssue, Dependency, Lifetime, Resolver, Service, ServiceProvider,
 };
 use std::any::Any;
 use std::sync::Arc;
@@ -131,10 +130,7 @@ impl ServiceCollection {
     {
         let construct: ConstructFn = Arc::new(move |resolver| match factory(resolver) {
             Ok(service) => Ok(Arc::new(service) as Erased),
-            Err(error) => Err(match error.downcast::<ResolveError>() {
-                Ok(error) => *error,
-                Err(error) => resolver.construction_error(error),
-            }),
+            Err(error) => Err(resolver.failure(error)),
         });
         self.push::<T>(lifetime, Source::Construct(construct), None)
     }
