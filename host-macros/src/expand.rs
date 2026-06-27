@@ -1,6 +1,7 @@
 use crate::parse::Options;
 use proc_macro2::TokenStream;
-use quote::quote;
+use quote::{quote, quote_spanned};
+use syn::spanned::Spanned;
 use syn::{Data, DeriveInput, Error, Fields, parse_quote};
 
 pub(crate) fn expand(input: DeriveInput) -> syn::Result<TokenStream> {
@@ -15,16 +16,15 @@ pub(crate) fn expand(input: DeriveInput) -> syn::Result<TokenStream> {
         ));
     };
     let (dependencies, construct) = match &options.constructor {
-        Some(constructor) => {
+        Some(path) => {
             // A bare name refers to an associated function of the struct.
-            let constructor = match constructor.get_ident() {
+            let function = match path.get_ident() {
                 Some(name) => quote!(Self::#name),
-                None => quote!(#constructor),
+                None => quote!(#path),
             };
-            (
-                quote!(#private::constructor_dependencies::<Self, _, _>(&#constructor)),
-                quote!(#private::call_constructor::<Self, _, _>(&#constructor, resolver)),
-            )
+            let bound =
+                quote_spanned!(path.span()=> #private::constructor::<Self, _, _>(&#function));
+            (quote!(#bound.dependencies()), quote!(#bound.call(resolver)))
         }
         None => fields_constructor(&data.fields, &private),
     };

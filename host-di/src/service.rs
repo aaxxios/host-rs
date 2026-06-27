@@ -61,6 +61,13 @@ impl<S, E: Into<BoxError>> ConstructorOutput<S> for Result<S, E> {
 
 /// A function whose arguments can all be injected, building `S`.
 #[doc(hidden)]
+#[diagnostic::on_unimplemented(
+    message = "`{Self}` cannot construct `{S}`",
+    label = "not a service constructor",
+    note = "a service constructor takes injectable parameters such as `Arc<T>` \
+            and returns `{S}` or `Result<{S}, E>`",
+    note = "constructors are synchronous; move async setup into a hosted service"
+)]
 pub trait Constructor<S, Args> {
     fn dependencies() -> Vec<Dependency>;
 
@@ -111,15 +118,31 @@ constructor!(
     A1, A2, A3, A4, A5, A6, A7, A8, A9, A10, A11, A12, A13, A14, A15, A16
 );
 
+/// Checks `f` once so derive output reports a bad constructor in one error.
 #[doc(hidden)]
-pub fn constructor_dependencies<S, Args, F: Constructor<S, Args>>(_: &F) -> Vec<Dependency> {
-    F::dependencies()
+pub fn constructor<S, Args, F: Constructor<S, Args>>(f: &F) -> Bound<'_, F, S> {
+    Bound {
+        f,
+        dependencies: F::dependencies,
+        call: F::call,
+    }
 }
 
+/// A constructor whose bound was checked by [`constructor`]; its methods carry
+/// no bounds so a bad constructor produces no follow-on errors.
 #[doc(hidden)]
-pub fn call_constructor<S, Args, F: Constructor<S, Args>>(
-    constructor: &F,
-    resolver: &Resolver<'_>,
-) -> Result<S, ResolveError> {
-    constructor.call(resolver)
+pub struct Bound<'a, F, S> {
+    f: &'a F,
+    dependencies: fn() -> Vec<Dependency>,
+    call: fn(&F, &Resolver<'_>) -> Result<S, ResolveError>,
+}
+
+impl<F, S> Bound<'_, F, S> {
+    pub fn dependencies(&self) -> Vec<Dependency> {
+        (self.dependencies)()
+    }
+
+    pub fn call(&self, resolver: &Resolver<'_>) -> Result<S, ResolveError> {
+        (self.call)(self.f, resolver)
+    }
 }

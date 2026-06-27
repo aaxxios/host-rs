@@ -1,0 +1,5 @@
+error: duplicate `service` option
+ --> tests/ui/duplicate_option.rs:4:30
+  |
+4 | #[service(constructor = new, constructor = open)]
+  |                              ^^^^^^^^^^^

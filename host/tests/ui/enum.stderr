@@ -1,0 +1,5 @@
+error: `#[derive(Service)]` supports structs only
+ --> tests/ui/enum.rs:4:6
+  |
+4 | enum Storage {
+  |      ^^^^^^^

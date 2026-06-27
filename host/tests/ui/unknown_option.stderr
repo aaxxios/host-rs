@@ -1,0 +1,5 @@
+error: unknown `service` option, expected `constructor` or `crate`
+ --> tests/ui/unknown_option.rs:4:11
+  |
+4 | #[service(lifetime = singleton)]
+  |           ^^^^^^^^

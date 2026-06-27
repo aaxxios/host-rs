@@ -9,6 +9,9 @@ host-core = { path = "../host-core" }
 host-di = { path = "../host-di" }
 host-macros = { path = "../host-macros" }
 
+[dev-dependencies]
+trybuild = "1"
+
 [features]
 logging = ["host-core/logging", "host-di/logging"]
 
