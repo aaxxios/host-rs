@@ -20,6 +20,11 @@ struct Repo<D: Send + Sync + 'static> {
 }
 
 #[derive(Service)]
+struct Unbounded<D> {
+    db: Arc<D>,
+}
+
+#[derive(Service)]
 #[service(crate = ::host)]
 struct Explicit;
 
@@ -72,6 +77,22 @@ fn generic_struct_is_injected() {
     let provider = services.build().unwrap();
 
     let repo = provider.resolve::<Repo<Database>>().unwrap();
+
+    assert!(Arc::ptr_eq(
+        &repo.db,
+        &provider.resolve::<Database>().unwrap()
+    ));
+}
+
+#[test]
+fn generic_struct_without_bounds_is_injected() {
+    let mut services = ServiceCollection::new();
+    services
+        .add_singleton::<Database>()
+        .add_singleton::<Unbounded<Database>>();
+    let provider = services.build().unwrap();
+
+    let repo = provider.resolve::<Unbounded<Database>>().unwrap();
 
     assert!(Arc::ptr_eq(
         &repo.db,

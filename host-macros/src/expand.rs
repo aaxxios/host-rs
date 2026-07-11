@@ -1,5 +1,5 @@
 use crate::parse::Options;
-use proc_macro2::TokenStream;
+use proc_macro2::{Ident, TokenStream, TokenTree};
 use quote::{quote, quote_spanned};
 use syn::spanned::Spanned;
 use syn::{Data, DeriveInput, Error, Fields, parse_quote};
@@ -31,10 +31,22 @@ pub(crate) fn expand(input: DeriveInput) -> syn::Result<TokenStream> {
 
     let ident = &input.ident;
     let mut generics = input.generics.clone();
-    generics
-        .make_where_clause()
-        .predicates
-        .push(parse_quote!(Self: ::core::marker::Send + ::core::marker::Sync + 'static));
+    let params: Vec<_> = generics
+        .type_params()
+        .map(|param| param.ident.clone())
+        .collect();
+    let predicates = &mut generics.make_where_clause().predicates;
+    predicates.push(parse_quote!(Self: ::core::marker::Send + ::core::marker::Sync + 'static));
+    // Bound generic field types on `Inject`, as serde does for `Serialize`, so
+    // users don't have to repeat `Send + Sync + 'static` on type parameters.
+    if options.constructor.is_none() {
+        for field in &data.fields {
+            let ty = &field.ty;
+            if mentions_any(quote!(#ty), &params) {
+                predicates.push(parse_quote!(#ty: #private::Inject));
+            }
+        }
+    }
     let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
 
     Ok(quote! {
@@ -50,6 +62,14 @@ pub(crate) fn expand(input: DeriveInput) -> syn::Result<TokenStream> {
                 #construct
             }
         }
+    })
+}
+
+fn mentions_any(tokens: TokenStream, idents: &[Ident]) -> bool {
+    tokens.into_iter().any(|token| match token {
+        TokenTree::Ident(ident) => idents.contains(&ident),
+        TokenTree::Group(group) => mentions_any(group.stream(), idents),
+        _ => false,
     })
 }
 
