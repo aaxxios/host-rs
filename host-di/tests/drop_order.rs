@@ -89,6 +89,21 @@ fn instances_drop_after_later_constructed_singletons() {
 }
 
 #[test]
+fn scoped_drop_before_singletons_when_scope_outlives_provider() {
+    let mut services = ServiceCollection::new();
+    services.add_singleton::<A>().add_scoped::<B>();
+    let provider = services.build().unwrap();
+    let scope = provider.create_scope();
+
+    scope.resolve::<A>().unwrap();
+    scope.resolve::<B>().unwrap();
+    drop(provider);
+    drop(scope);
+
+    assert_eq!(dropped(), ["B", "A"]);
+}
+
+#[test]
 fn singletons_outlive_provider_while_a_scope_holds_the_container() {
     let mut services = ServiceCollection::new();
     services.add_singleton::<A>();

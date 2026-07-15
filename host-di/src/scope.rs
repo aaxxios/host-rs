@@ -8,8 +8,10 @@ use std::sync::{Arc, OnceLock};
 /// Owns a handle to the container, so it can be moved into other threads or
 /// tasks and keeps working after the provider that created it is dropped.
 pub struct Scope {
-    container: Arc<Container>,
+    // Declared first: scoped instances must be released before the container,
+    // which may be dropped with this scope.
     state: ScopeState,
+    container: Arc<Container>,
 }
 
 #[derive(Default)]
@@ -22,8 +24,8 @@ pub(crate) struct ScopeState {
 impl Scope {
     pub(crate) fn new(container: Arc<Container>) -> Self {
         Self {
-            container,
             state: ScopeState::default(),
+            container,
         }
     }
 
