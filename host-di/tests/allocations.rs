@@ -67,6 +67,24 @@ impl Service for Transaction {
     }
 }
 
+macro_rules! scoped {
+    ($($name:ident),*) => {$(
+        struct $name;
+
+        impl Service for $name {
+            fn dependencies() -> Vec<Dependency> {
+                Vec::new()
+            }
+
+            fn construct(_: &Resolver<'_>) -> Result<Self, ResolveError> {
+                Ok($name)
+            }
+        }
+    )*};
+}
+
+scoped!(S1, S2, S3, S4, S5);
+
 // One test per binary: the counter is process-wide.
 #[test]
 fn resolving_existing_instances_does_not_allocate() {
@@ -103,4 +121,28 @@ fn resolving_existing_instances_does_not_allocate() {
         }
     });
     assert_eq!(scoped, 0, "resolving a built scoped instance");
+
+    // Beyond one `Arc` per instance, a scope's storage is a single allocation
+    // made on its first scoped resolution, however many instances it holds.
+    let mut services = ServiceCollection::new();
+    services
+        .add_scoped::<S1>()
+        .add_scoped::<S2>()
+        .add_scoped::<S3>()
+        .add_scoped::<S4>()
+        .add_scoped::<S5>();
+    let provider = services.build().unwrap();
+    let one = allocations_during(|| {
+        let scope = provider.create_scope();
+        scope.resolve::<S1>().unwrap();
+    });
+    let five = allocations_during(|| {
+        let scope = provider.create_scope();
+        scope.resolve::<S1>().unwrap();
+        scope.resolve::<S2>().unwrap();
+        scope.resolve::<S3>().unwrap();
+        scope.resolve::<S4>().unwrap();
+        scope.resolve::<S5>().unwrap();
+    });
+    assert_eq!(five - one, 4, "scope bookkeeping per instance");
 }

@@ -1,4 +1,4 @@
-use crate::container::{Container, CreationLog, Erased, release};
+use crate::container::{Container, Slots};
 use crate::sync::ConstructionLock;
 use crate::{ResolveError, Resolver};
 use std::sync::{Arc, OnceLock};
@@ -16,9 +16,8 @@ pub struct Scope {
 
 #[derive(Default)]
 pub(crate) struct ScopeState {
-    slots: OnceLock<Box<[OnceLock<Erased>]>>,
+    slots: OnceLock<Slots>,
     pub(crate) construction: ConstructionLock,
-    pub(crate) created: CreationLog,
 }
 
 impl Scope {
@@ -38,21 +37,8 @@ impl Scope {
 impl ScopeState {
     /// Storage is allocated on the first scoped resolution, so scopes that only
     /// touch singletons and transients never allocate.
-    pub(crate) fn slot(&self, container: &Container, index: usize) -> Option<&OnceLock<Erased>> {
+    pub(crate) fn slots(&self, container: &Container) -> &Slots {
         self.slots
-            .get_or_init(|| {
-                (0..container.scoped_count)
-                    .map(|_| OnceLock::new())
-                    .collect()
-            })
-            .get(index)
-    }
-}
-
-impl Drop for ScopeState {
-    fn drop(&mut self) {
-        if let Some(slots) = self.slots.get_mut() {
-            release(slots, &mut self.created);
-        }
+            .get_or_init(|| Slots::new(container.scoped_count))
     }
 }

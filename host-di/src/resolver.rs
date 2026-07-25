@@ -1,10 +1,10 @@
 use crate::collection::{Registration, Source};
-use crate::container::{Container, CreationLog, Erased};
+use crate::container::{Container, Erased, Slots};
 use crate::key::Key;
 use crate::scope::ScopeState;
 use crate::sync::ConstructionLock;
 use crate::{BoxError, Lifetime, ResolveError};
-use std::sync::{Arc, OnceLock};
+use std::sync::Arc;
 
 /// Resolves dependencies while a service is being constructed.
 ///
@@ -79,12 +79,10 @@ impl<'a> Resolver<'a> {
 
     fn singleton(&self, registration: &Registration) -> Result<Erased, ResolveError> {
         let container = self.container;
-        let slot = container.singletons.get(registration.slot);
         self.cached(
             registration,
-            slot,
+            &container.singletons,
             &container.construction,
-            &container.created,
             None,
         )
     }
@@ -95,43 +93,33 @@ impl<'a> Resolver<'a> {
                 path: self.path_to(registration.key),
             });
         };
-        let slot = scope.slot(self.container, registration.slot);
         self.cached(
             registration,
-            slot,
+            scope.slots(self.container),
             &scope.construction,
-            &scope.created,
             Some(scope),
         )
     }
 
-    /// Returns the instance in `slot`, constructing it under `lock` on first use.
-    /// Failed constructions leave the slot empty so the next resolution retries.
+    /// Returns the cached instance, constructing it under `lock` on first use.
+    /// Failed constructions store nothing, so the next resolution retries.
     fn cached(
         &self,
         registration: &Registration,
-        slot: Option<&OnceLock<Erased>>,
+        slots: &Slots,
         lock: &ConstructionLock,
-        created: &CreationLog,
         scope: Option<&ScopeState>,
     ) -> Result<Erased, ResolveError> {
-        let Some(slot) = slot else {
-            return Err(ResolveError::NotRegistered {
-                path: self.path_to(registration.key),
-            });
-        };
-        if let Some(instance) = slot.get() {
-            return Ok(Arc::clone(instance));
+        if let Some(instance) = slots.get(registration.slot) {
+            return Ok(instance);
         }
 
         let _guard = lock.lock();
-        if let Some(instance) = slot.get() {
-            return Ok(Arc::clone(instance));
+        if let Some(instance) = slots.get(registration.slot) {
+            return Ok(instance);
         }
         let instance = self.construct(registration, scope)?;
-        if slot.set(Arc::clone(&instance)).is_ok() {
-            created.record(registration.slot);
-        }
+        slots.fill(registration.slot, Arc::clone(&instance));
         Ok(instance)
     }
 

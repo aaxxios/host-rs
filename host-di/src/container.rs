@@ -4,7 +4,9 @@ use crate::scope::Scope;
 use crate::sync::ConstructionLock;
 use crate::{Lifetime, ResolveError, Resolver};
 use std::any::Any;
-use std::sync::{Arc, Mutex, OnceLock, PoisonError};
+use std::cmp::Reverse;
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::{Arc, OnceLock};
 
 pub(crate) type Erased = Arc<dyn Any + Send + Sync>;
 
@@ -16,9 +18,8 @@ pub(crate) struct Container {
     registrations: Box<[Registration]>,
     lookup: KeyMap<usize>,
     pub(crate) scoped_count: usize,
-    pub(crate) singletons: Box<[OnceLock<Erased>]>,
+    pub(crate) singletons: Slots,
     pub(crate) construction: ConstructionLock,
-    pub(crate) created: CreationLog,
 }
 
 impl Container {
@@ -44,16 +45,14 @@ impl Container {
             registrations: registrations.into_boxed_slice(),
             lookup,
             scoped_count: scoped,
-            singletons: (0..singletons).map(|_| OnceLock::new()).collect(),
+            singletons: Slots::new(singletons),
             construction: ConstructionLock::default(),
-            created: CreationLog::default(),
         };
         for registration in &container.registrations {
             if let Source::Instance(instance) = &registration.source {
-                let slot = container.singletons.get(registration.slot);
-                if slot.is_some_and(|slot| slot.set(Arc::clone(instance)).is_ok()) {
-                    container.created.record(registration.slot);
-                }
+                container
+                    .singletons
+                    .fill(registration.slot, Arc::clone(instance));
             }
         }
         container
@@ -66,35 +65,71 @@ impl Container {
     }
 }
 
-/// Slot indices in the order their instances were created.
-#[derive(Default)]
-pub(crate) struct CreationLog(Mutex<Vec<usize>>);
+/// Cached instances owned by the container or by a scope.
+///
+/// Creation order is stamped into each slot so the whole store stays one
+/// allocation; instances are released in reverse of that order.
+pub(crate) struct Slots {
+    slots: Box<[Slot]>,
+    created: AtomicUsize,
+}
 
-impl CreationLog {
-    pub(crate) fn record(&self, slot: usize) {
-        self.0
-            .lock()
-            .unwrap_or_else(PoisonError::into_inner)
-            .push(slot);
+#[derive(Default)]
+struct Slot {
+    value: OnceLock<Erased>,
+    order: AtomicUsize,
+}
+
+impl Slots {
+    pub(crate) fn new(len: usize) -> Self {
+        Self {
+            slots: (0..len).map(|_| Slot::default()).collect(),
+            created: AtomicUsize::new(0),
+        }
     }
 
-    pub(crate) fn take(&mut self) -> Vec<usize> {
-        std::mem::take(self.0.get_mut().unwrap_or_else(PoisonError::into_inner))
+    pub(crate) fn get(&self, index: usize) -> Option<Erased> {
+        self.slots
+            .get(index)
+            .and_then(|slot| slot.value.get())
+            .map(Arc::clone)
+    }
+
+    /// Stores a new instance. Callers hold the owner's construction lock, so
+    /// stamps follow creation order.
+    pub(crate) fn fill(&self, index: usize, instance: Erased) {
+        if let Some(slot) = self.slots.get(index) {
+            if slot.value.set(instance).is_ok() {
+                let order = self.created.fetch_add(1, Ordering::Relaxed);
+                slot.order.store(order, Ordering::Relaxed);
+            }
+        }
+    }
+
+    fn release(&mut self) {
+        let count = self.created.load(Ordering::Relaxed);
+        let mut filled = Vec::with_capacity(count);
+        filled.extend(
+            self.slots
+                .iter_mut()
+                .filter(|slot| slot.value.get().is_some()),
+        );
+        filled.sort_unstable_by_key(|slot| Reverse(slot.order.load(Ordering::Relaxed)));
+        for slot in filled {
+            drop(slot.value.take());
+        }
     }
 }
 
-/// Releases `slots` in reverse order of creation.
-pub(crate) fn release(slots: &mut [OnceLock<Erased>], created: &mut CreationLog) {
-    for slot in created.take().into_iter().rev() {
-        if let Some(slot) = slots.get_mut(slot) {
-            drop(slot.take());
-        }
+impl Drop for Slots {
+    fn drop(&mut self) {
+        self.release();
     }
 }
 
 impl Drop for Container {
     fn drop(&mut self) {
-        release(&mut self.singletons, &mut self.created);
+        self.singletons.release();
         // Registered instances were created at build, before anything else, so
         // they are released last, latest registration first.
         let registrations = std::mem::take(&mut self.registrations).into_vec();
