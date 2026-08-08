@@ -1,8 +1,10 @@
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
-use host_di::{BuildIssue, Dependency, ResolveError, Resolver, Service, ServiceCollection};
+use host_di::{
+    BuildIssue, Dependency, ResolveError, Resolver, Service, ServiceCollection, ServiceProvider,
+};
 use std::any::type_name;
-use std::sync::mpsc;
+use std::sync::{Arc, OnceLock, mpsc};
 use std::thread;
 use std::time::Duration;
 
@@ -147,6 +149,28 @@ fn factory_cycle_is_a_resolution_error() {
 
     assert!(matches!(&err, ResolveError::Cycle { path }
         if path == &[name::<FactoryMade>(), name::<UsesFactory>(), name::<FactoryMade>()]));
+}
+
+struct Locator;
+
+#[test]
+fn cycle_through_captured_provider_is_a_resolution_error() {
+    let provider_slot = Arc::new(OnceLock::<ServiceProvider>::new());
+    let captured = Arc::clone(&provider_slot);
+    let mut services = ServiceCollection::new();
+    services.add_singleton_with(move |_| {
+        if let Some(provider) = captured.get() {
+            provider.resolve::<Locator>()?;
+        }
+        Ok(Locator)
+    });
+    let provider = services.build().unwrap();
+    let _ = provider_slot.set(provider.clone());
+
+    let err = provider.resolve::<Locator>().err().unwrap();
+
+    assert!(matches!(&err, ResolveError::Cycle { path }
+        if path.first() == Some(&name::<Locator>()) && path.last() == Some(&name::<Locator>())));
 }
 
 #[test]

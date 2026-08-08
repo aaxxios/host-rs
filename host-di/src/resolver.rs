@@ -4,6 +4,8 @@ use crate::key::Key;
 use crate::scope::ScopeState;
 use crate::sync::ConstructionLock;
 use crate::{BoxError, Lifetime, ResolveError};
+use std::cell::RefCell;
+use std::ptr;
 use std::sync::Arc;
 
 /// Resolves dependencies while a service is being constructed.
@@ -128,9 +130,8 @@ impl<'a> Resolver<'a> {
         registration: &Registration,
         scope: Option<&ScopeState>,
     ) -> Result<Erased, ResolveError> {
-        if let Some(path) = self.cycle_to(registration.key) {
-            return Err(ResolveError::Cycle { path });
-        }
+        let _constructing = Constructing::enter(self.container, registration.key)
+            .map_err(|path| ResolveError::Cycle { path })?;
         let frame = Resolver {
             container: self.container,
             scope,
@@ -174,24 +175,49 @@ impl<'a> Resolver<'a> {
         path
     }
 
-    /// The cycle closed by constructing `key` again, if it is already under
-    /// construction in this chain.
-    fn cycle_to(&self, key: Key) -> Option<Vec<&'static str>> {
-        let mut frame = Some(self);
-        while let Some(current) = frame {
-            if current.service == Some(key) {
-                let path = self.path_to(key);
-                let start = path.iter().position(|&name| name == key.name)?;
-                return Some(path[start..].to_vec());
-            }
-            frame = current.parent;
-        }
-        None
-    }
-
     fn path_to(&self, key: Key) -> Vec<&'static str> {
         let mut path = self.path();
         path.push(key.name);
         path
+    }
+}
+
+thread_local! {
+    /// Services under construction on this thread, per container. Kept outside
+    /// the frame chain so a resolution that starts a new chain on the same
+    /// thread, such as a factory resolving through a captured provider, still
+    /// sees the services it is nested in.
+    static CONSTRUCTING: RefCell<Vec<(*const Container, Key)>> = const { RefCell::new(Vec::new()) };
+}
+
+/// Marks a service as under construction on this thread until dropped.
+struct Constructing;
+
+impl Constructing {
+    /// Fails with the cycle path if `key` is already under construction in
+    /// `container` on this thread.
+    fn enter(container: &Container, key: Key) -> Result<Self, Vec<&'static str>> {
+        let container: *const Container = container;
+        CONSTRUCTING.with_borrow_mut(|stack| {
+            let ours = stack
+                .iter()
+                .filter(|(owner, _)| ptr::eq(*owner, container))
+                .map(|&(_, service)| service);
+            if let Some(start) = ours.clone().position(|service| service == key) {
+                let mut path: Vec<_> = ours.skip(start).map(|service| service.name).collect();
+                path.push(key.name);
+                return Err(path);
+            }
+            stack.push((container, key));
+            Ok(Constructing)
+        })
+    }
+}
+
+impl Drop for Constructing {
+    fn drop(&mut self) {
+        CONSTRUCTING.with_borrow_mut(|stack| {
+            stack.pop();
+        });
     }
 }
