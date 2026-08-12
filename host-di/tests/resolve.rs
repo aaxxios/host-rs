@@ -42,6 +42,8 @@ leaf!(Database, DATABASE_CALLS);
 leaf!(Config, CONFIG_CALLS);
 leaf!(Clock, CLOCK_CALLS);
 leaf!(Session, SESSION_CALLS);
+leaf!(Request, REQUEST_CALLS);
+leaf!(Cookie, COOKIE_CALLS);
 
 struct Repository {
     db: Arc<Database>,
@@ -143,6 +145,29 @@ fn last_registration_wins() {
     let second = provider.resolve::<Session>().unwrap();
 
     assert!(!Arc::ptr_eq(&first, &second));
+}
+
+#[test]
+fn last_registration_wins_for_scoped_overrides() {
+    let mut services = ServiceCollection::new();
+    services
+        .add_transient::<Request>()
+        .add_scoped::<Request>()
+        .add_scoped::<Cookie>()
+        .add_singleton::<Cookie>();
+    let provider = services.build().unwrap();
+    let scope = provider.create_scope();
+
+    let first = scope.resolve::<Request>().unwrap();
+    let second = scope.resolve::<Request>().unwrap();
+    assert!(Arc::ptr_eq(&first, &second));
+    assert!(matches!(
+        provider.resolve::<Request>(),
+        Err(ResolveError::ScopedFromRoot { .. })
+    ));
+
+    let cookie = provider.resolve::<Cookie>().unwrap();
+    assert!(Arc::ptr_eq(&cookie, &scope.resolve::<Cookie>().unwrap()));
 }
 
 static FLAKY_CALLS: AtomicUsize = AtomicUsize::new(0);
