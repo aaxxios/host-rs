@@ -5,6 +5,7 @@ use crate::sync::ConstructionLock;
 use crate::{Lifetime, ResolveError, Resolver};
 use std::any::Any;
 use std::cmp::Reverse;
+use std::fmt;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, OnceLock};
 
@@ -158,5 +159,13 @@ impl ServiceProvider {
     /// Creates a scope for resolving scoped services.
     pub fn create_scope(&self) -> Scope {
         Scope::new(Arc::clone(&self.container))
+    }
+}
+
+impl fmt::Debug for ServiceProvider {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("ServiceProvider")
+            .field("registrations", &self.container.registrations)
+            .finish_non_exhaustive()
     }
 }

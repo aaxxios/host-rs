@@ -2,7 +2,7 @@ use crate::Host;
 use host_di::{BuildError, ServiceCollection};
 
 /// Configures and builds a [`Host`].
-#[derive(Default)]
+#[derive(Debug, Default)]
 pub struct HostBuilder {
     services: ServiceCollection,
 }

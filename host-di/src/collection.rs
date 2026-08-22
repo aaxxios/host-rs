@@ -5,6 +5,7 @@ use crate::{
     BoxError, BuildError, BuildIssue, Dependency, Lifetime, Resolver, Service, ServiceProvider,
 };
 use std::any::Any;
+use std::fmt;
 use std::sync::Arc;
 
 /// Services registered for an application, frozen into a [`ServiceProvider`]
@@ -14,7 +15,7 @@ use std::sync::Arc;
 /// constructed outside any scope, so a singleton that depends on a scoped
 /// service fails to resolve rather than holding on to one scope's instance.
 /// Transients are constructed in the scope that requested them.
-#[derive(Default)]
+#[derive(Debug, Default)]
 pub struct ServiceCollection {
     registrations: Vec<Registration>,
 }
@@ -29,6 +30,15 @@ pub(crate) struct Registration {
     pub(crate) cast: Box<dyn Any + Send + Sync>,
     /// Index into the storage of this registration's lifetime, set by the container.
     pub(crate) slot: usize,
+}
+
+impl fmt::Debug for Registration {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Registration")
+            .field("service", &self.key.name)
+            .field("lifetime", &self.lifetime)
+            .finish_non_exhaustive()
+    }
 }
 
 pub(crate) enum Source {

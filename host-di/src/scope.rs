@@ -1,6 +1,7 @@
 use crate::container::{Container, Slots};
 use crate::sync::ConstructionLock;
 use crate::{ResolveError, Resolver};
+use std::fmt;
 use std::sync::{Arc, OnceLock};
 
 /// A unit of work with its own scoped instances, such as one request.
@@ -31,6 +32,12 @@ impl Scope {
     /// Resolves a service of any lifetime.
     pub fn resolve<T: ?Sized + Send + Sync + 'static>(&self) -> Result<Arc<T>, ResolveError> {
         Resolver::scoped(&self.container, &self.state).resolve()
+    }
+}
+
+impl fmt::Debug for Scope {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Scope").finish_non_exhaustive()
     }
 }
 

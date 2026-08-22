@@ -1,7 +1,7 @@
 //! Dependency injection container: register services in a
 //! [`ServiceCollection`], build it into a [`ServiceProvider`], then resolve.
 
-#![warn(missing_docs)]
+#![warn(missing_docs, missing_debug_implementations)]
 
 mod collection;
 mod container;

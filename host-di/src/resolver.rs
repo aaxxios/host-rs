@@ -5,6 +5,7 @@ use crate::scope::ScopeState;
 use crate::sync::ConstructionLock;
 use crate::{BoxError, Lifetime, ResolveError};
 use std::cell::RefCell;
+use std::fmt;
 use std::ptr;
 use std::sync::Arc;
 
@@ -17,6 +18,14 @@ pub struct Resolver<'a> {
     scope: Option<&'a ScopeState>,
     parent: Option<&'a Resolver<'a>>,
     service: Option<Key>,
+}
+
+impl fmt::Debug for Resolver<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Resolver")
+            .field("constructing", &self.path())
+            .finish_non_exhaustive()
+    }
 }
 
 impl<'a> Resolver<'a> {

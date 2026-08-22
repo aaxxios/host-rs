@@ -1,6 +1,6 @@
 //! Application host built around a dependency injection container.
 
-#![warn(missing_docs)]
+#![warn(missing_docs, missing_debug_implementations)]
 
 mod builder;
 
@@ -9,6 +9,7 @@ pub use builder::HostBuilder;
 use host_di::ServiceProvider;
 
 /// A built application host.
+#[derive(Debug)]
 pub struct Host {
     services: ServiceProvider,
 }

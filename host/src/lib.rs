@@ -21,7 +21,7 @@
 //! # Ok::<(), Box<dyn std::error::Error>>(())
 //! ```
 
-#![warn(missing_docs)]
+#![warn(missing_docs, missing_debug_implementations)]
 
 pub use host_core::{Host, HostBuilder};
 pub use host_di::{

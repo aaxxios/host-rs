@@ -1,4 +1,5 @@
 use crate::{BoxError, Dependency, ResolveError, Resolver};
+use std::fmt;
 use std::sync::Arc;
 
 /// A type the container can construct.
@@ -135,6 +136,12 @@ pub struct Bound<'a, F, S> {
     f: &'a F,
     dependencies: fn() -> Vec<Dependency>,
     call: fn(&F, &Resolver<'_>) -> Result<S, ResolveError>,
+}
+
+impl<F, S> fmt::Debug for Bound<'_, F, S> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Bound").finish_non_exhaustive()
+    }
 }
 
 impl<F, S> Bound<'_, F, S> {
