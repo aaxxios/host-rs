@@ -26,20 +26,24 @@ pub(crate) struct Container {
 impl Container {
     pub(crate) fn new(mut registrations: Vec<Registration>) -> Self {
         let mut lookup = KeyMap::default();
-        let (mut singletons, mut scoped) = (0, 0);
-        for (index, registration) in registrations.iter_mut().enumerate() {
-            match registration.lifetime {
-                Lifetime::Singleton => {
-                    registration.slot = singletons;
-                    singletons += 1;
-                }
-                Lifetime::Scoped => {
-                    registration.slot = scoped;
-                    scoped += 1;
-                }
-                Lifetime::Transient => {}
-            }
+        for (index, registration) in registrations.iter().enumerate() {
             lookup.insert(registration.key, index);
+        }
+
+        // Only the last registration of each service is reachable, so only
+        // those get storage.
+        let (mut singletons, mut scoped) = (0, 0);
+        let mut effective: Vec<_> = lookup.values().copied().collect();
+        effective.sort_unstable();
+        for &index in &effective {
+            let registration = &mut registrations[index];
+            let count = match registration.lifetime {
+                Lifetime::Singleton => &mut singletons,
+                Lifetime::Scoped => &mut scoped,
+                Lifetime::Transient => continue,
+            };
+            registration.slot = *count;
+            *count += 1;
         }
 
         let container = Self {
@@ -49,7 +53,8 @@ impl Container {
             singletons: Slots::new(singletons),
             construction: ConstructionLock::default(),
         };
-        for registration in &container.registrations {
+        for &index in &effective {
+            let registration = &container.registrations[index];
             if let Source::Instance(instance) = &registration.source {
                 container
                     .singletons
@@ -167,5 +172,41 @@ impl fmt::Debug for ServiceProvider {
         f.debug_struct("ServiceProvider")
             .field("registrations", &self.container.registrations)
             .finish_non_exhaustive()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{Dependency, Service, ServiceCollection};
+
+    struct Leaf;
+
+    impl Service for Leaf {
+        fn dependencies() -> Vec<Dependency> {
+            Vec::new()
+        }
+
+        fn construct(_: &Resolver<'_>) -> Result<Self, ResolveError> {
+            Ok(Leaf)
+        }
+    }
+
+    struct Config;
+
+    #[test]
+    fn overridden_registrations_get_no_storage() {
+        let mut services = ServiceCollection::new();
+        services
+            .add_scoped::<Leaf>()
+            .add_scoped::<Leaf>()
+            .add_singleton_instance(Config)
+            .add_singleton_with(|_| Ok(Config));
+        let provider = services.build().unwrap();
+        let container = &provider.container;
+
+        assert_eq!(container.scoped_count, 1);
+        assert_eq!(container.singletons.slots.len(), 1);
+        assert_eq!(container.singletons.created.load(Ordering::Relaxed), 0);
     }
 }
