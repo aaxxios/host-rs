@@ -13,6 +13,10 @@ use std::sync::Arc;
 ///
 /// Each construction gets its own frame linked to the frame that requested it,
 /// so the chain of services under construction lives on the stack.
+///
+/// Use it only on the constructing thread. Construction of cached instances is
+/// serialised per container and per scope, so handing a resolver to another
+/// thread and waiting for it deadlocks.
 pub struct Resolver<'a> {
     container: &'a Container,
     scope: Option<&'a ScopeState>,

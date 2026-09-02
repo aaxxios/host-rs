@@ -72,6 +72,8 @@ impl ServiceCollection {
     ///
     /// Errors from resolving dependencies inside the factory keep their original
     /// path; any other error is reported as a construction failure of `T`.
+    /// Like constructors, factories must not block on other threads that
+    /// resolve from the same container.
     pub fn add_singleton_with<T, F>(&mut self, factory: F) -> &mut Self
     where
         T: Send + Sync + 'static,
