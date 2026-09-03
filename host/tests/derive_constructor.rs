@@ -61,6 +61,28 @@ struct Pong {
     _ping: Arc<Ping>,
 }
 
+#[derive(Service)]
+#[service(constructor = self::open_gauge)]
+struct Gauge {
+    level: u32,
+}
+
+fn open_gauge(counter: Arc<Counter>) -> Gauge {
+    Gauge {
+        level: counter.start,
+    }
+}
+
+#[test]
+fn free_function_constructor() {
+    let mut services = ServiceCollection::new();
+    services.add_singleton::<Counter>().add_singleton::<Gauge>();
+
+    let gauge = services.build().unwrap().resolve::<Gauge>().unwrap();
+
+    assert_eq!(gauge.level, 7);
+}
+
 #[test]
 fn constructor_params_are_injected() {
     let mut services = ServiceCollection::new();

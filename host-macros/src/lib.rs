@@ -13,8 +13,9 @@ use proc_macro::TokenStream;
 /// `Arc<T>`. Options:
 ///
 /// - `#[service(constructor = name)]`: build the struct with an associated
-///   function (or any function path) instead. Its parameters are injected, and
-///   it returns `Self` or `Result<Self, E>`.
+///   function instead. A single name refers to `Self::name`; use a path such as
+///   `self::connect` for a free function. Its parameters are injected, and it
+///   returns `Self` or `Result<Self, E>`.
 /// - `#[service(crate = path)]`: path to the `host` crate when it is renamed or
 ///   re-exported.
 #[proc_macro_derive(Service, attributes(service))]
