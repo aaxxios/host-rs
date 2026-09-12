@@ -14,7 +14,7 @@ host-macros = { path = "../host-macros" }
 trybuild = "1"
 
 [features]
-logging = ["host-core/logging", "host-di/logging"]
+logging = ["host-di/logging"]
 
 [lints]
 workspace = true

@@ -7,10 +7,6 @@ license.workspace = true
 
 [dependencies]
 host-di = { path = "../host-di" }
-tracing = { workspace = true, optional = true }
-
-[features]
-logging = ["dep:tracing"]
 
 [lints]
 workspace = true
