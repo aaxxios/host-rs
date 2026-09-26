@@ -1,0 +1,15 @@
+error[E0382]: use of moved value: `builder`
+ --> tests/ui/build_twice.rs:6:19
+  |
+4 |     let builder = Host::builder();
+  |         ------- move occurs because `builder` has type `HostBuilder`, which does not implement the `Copy` trait
+5 |     let _first = builder.build();
+  |                          ------- `builder` moved due to this method call
+6 |     let _second = builder.build();
+  |                   ^^^^^^^ value used here after move
+  |
+note: `host::HostBuilder::build` takes ownership of the receiver `self`, which moves `builder`
+ --> $WORKSPACE/host-core/src/builder.rs
+  |
+  |     pub fn build(self) -> Result<Host, BuildError> {
+  |                  ^^^^

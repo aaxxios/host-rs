@@ -19,6 +19,8 @@ impl HostBuilder {
     }
 
     /// Builds the host, rejecting an invalid service collection.
+    ///
+    /// Consumes the builder, so each builder produces at most one host.
     pub fn build(self) -> Result<Host, BuildError> {
         Ok(Host {
             services: self.services.build()?,

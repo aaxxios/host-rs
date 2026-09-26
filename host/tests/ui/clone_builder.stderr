@@ -1,0 +1,5 @@
+error[E0599]: no method named `clone` found for struct `HostBuilder` in the current scope
+ --> tests/ui/clone_builder.rs:5:25
+  |
+5 |     let _copy = builder.clone();
+  |                         ^^^^^ method not found in `HostBuilder`
