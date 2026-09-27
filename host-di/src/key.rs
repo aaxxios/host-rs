@@ -64,6 +64,7 @@ pub(crate) type KeyMap<V> = HashMap<Key, V, BuildHasherDefault<TypeIdHasher>>;
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Dependency {
     key: Key,
+    all: bool,
 }
 
 impl Dependency {
@@ -71,6 +72,15 @@ impl Dependency {
     pub fn on<T: ?Sized + 'static>() -> Self {
         Self {
             key: Key::of::<T>(),
+            all: false,
+        }
+    }
+
+    /// A dependency on every registered implementation of `T`.
+    pub fn all<T: ?Sized + 'static>() -> Self {
+        Self {
+            key: Key::of::<T>(),
+            all: true,
         }
     }
 
@@ -81,5 +91,9 @@ impl Dependency {
 
     pub(crate) fn key(&self) -> Key {
         self.key
+    }
+
+    pub(crate) fn is_all(&self) -> bool {
+        self.all
     }
 }

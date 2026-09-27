@@ -33,6 +33,13 @@ impl Scope {
     pub fn resolve<T: ?Sized + Send + Sync + 'static>(&self) -> Result<Arc<T>, ResolveError> {
         Resolver::scoped(&self.container, &self.state).resolve()
     }
+
+    /// Resolves every registration of `T`, in registration order.
+    pub fn resolve_all<T: ?Sized + Send + Sync + 'static>(
+        &self,
+    ) -> Result<Vec<Arc<T>>, ResolveError> {
+        Resolver::scoped(&self.container, &self.state).resolve_all()
+    }
 }
 
 impl fmt::Debug for Scope {

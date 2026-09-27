@@ -22,6 +22,9 @@ pub struct ServiceCollection {
 
 pub(crate) struct Registration {
     pub(crate) key: Key,
+    /// Type name of what is constructed; differs from the key's name when a
+    /// service is registered as a trait.
+    pub(crate) implementation: &'static str,
     pub(crate) lifetime: Lifetime,
     pub(crate) source: Source,
     /// Declared dependencies; `None` for factories and instances.
@@ -36,6 +39,7 @@ impl fmt::Debug for Registration {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Registration")
             .field("service", &self.key.name)
+            .field("implementation", &self.implementation)
             .field("lifetime", &self.lifetime)
             .finish_non_exhaustive()
     }
@@ -153,8 +157,10 @@ impl ServiceCollection {
         source: Source,
         dependencies: Option<fn() -> Vec<Dependency>>,
     ) -> &mut Self {
+        let key = Key::of::<T>();
         self.registrations.push(Registration {
-            key: Key::of::<T>(),
+            key,
+            implementation: key.name,
             lifetime,
             source,
             dependencies,

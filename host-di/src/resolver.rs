@@ -21,7 +21,7 @@ pub struct Resolver<'a> {
     container: &'a Container,
     scope: Option<&'a ScopeState>,
     parent: Option<&'a Resolver<'a>>,
-    service: Option<Key>,
+    service: Option<&'a Registration>,
 }
 
 impl fmt::Debug for Resolver<'_> {
@@ -60,19 +60,22 @@ impl<'a> Resolver<'a> {
             });
         };
 
-        let instance = match registration.lifetime {
-            Lifetime::Singleton => self.singleton(registration)?,
-            Lifetime::Scoped => self.scoped_instance(registration)?,
-            Lifetime::Transient => self.construct(registration, self.scope)?,
-        };
+        let instance = self.instance(registration)?;
+        self.cast(registration, instance)
+    }
 
-        registration
-            .cast
-            .downcast_ref::<fn(Erased) -> Option<Arc<T>>>()
-            .and_then(|cast| cast(instance))
-            .ok_or_else(|| ResolveError::NotRegistered {
-                path: self.path_to(key),
-            })
+    /// Resolves every registration of `T`, in registration order. The first
+    /// failure fails the whole call; nothing is cached for the failed member.
+    pub fn resolve_all<T: ?Sized + Send + Sync + 'static>(
+        &self,
+    ) -> Result<Vec<Arc<T>>, ResolveError> {
+        let registrations = self.container.registrations_of(Key::of::<T>());
+        let mut all = Vec::with_capacity(registrations.len());
+        for registration in registrations {
+            let instance = self.instance(registration)?;
+            all.push(self.cast(registration, instance)?);
+        }
+        Ok(all)
     }
 
     /// Wraps a constructor failure with the current dependency path.
@@ -90,6 +93,28 @@ impl<'a> Resolver<'a> {
             Ok(error) => *error,
             Err(error) => self.construction_error(error),
         }
+    }
+
+    fn instance(&self, registration: &Registration) -> Result<Erased, ResolveError> {
+        match registration.lifetime {
+            Lifetime::Singleton => self.singleton(registration),
+            Lifetime::Scoped => self.scoped_instance(registration),
+            Lifetime::Transient => self.construct(registration, self.scope),
+        }
+    }
+
+    fn cast<T: ?Sized + 'static>(
+        &self,
+        registration: &Registration,
+        instance: Erased,
+    ) -> Result<Arc<T>, ResolveError> {
+        registration
+            .cast
+            .downcast_ref::<fn(Erased) -> Option<Arc<T>>>()
+            .and_then(|cast| cast(instance))
+            .ok_or_else(|| ResolveError::NotRegistered {
+                path: self.path_to(registration.key),
+            })
     }
 
     fn singleton(&self, registration: &Registration) -> Result<Erased, ResolveError> {
@@ -140,16 +165,16 @@ impl<'a> Resolver<'a> {
 
     fn construct(
         &self,
-        registration: &Registration,
-        scope: Option<&ScopeState>,
+        registration: &'a Registration,
+        scope: Option<&'a ScopeState>,
     ) -> Result<Erased, ResolveError> {
-        let _constructing = Constructing::enter(self.container, registration.key)
-            .map_err(|path| ResolveError::Cycle { path })?;
+        let _constructing =
+            Constructing::enter(registration).map_err(|path| ResolveError::Cycle { path })?;
         let frame = Resolver {
             container: self.container,
             scope,
             parent: Some(self),
-            service: Some(registration.key),
+            service: Some(registration),
         };
         let result = match &registration.source {
             Source::Construct(construct) => construct(&frame),
@@ -159,12 +184,12 @@ impl<'a> Resolver<'a> {
         #[cfg(feature = "logging")]
         match &result {
             Ok(_) => tracing::debug!(
-                service = registration.key.name,
+                service = registration.implementation,
                 lifetime = ?registration.lifetime,
                 "constructed service"
             ),
             Err(error) => tracing::debug!(
-                service = registration.key.name,
+                service = registration.implementation,
                 lifetime = ?registration.lifetime,
                 %error,
                 "service construction failed"
@@ -180,7 +205,7 @@ impl<'a> Resolver<'a> {
         let mut frame = Some(self);
         while let Some(current) = frame {
             if let Some(service) = current.service {
-                path.push(service.name);
+                path.push(service.implementation);
             }
             frame = current.parent;
         }
@@ -196,32 +221,30 @@ impl<'a> Resolver<'a> {
 }
 
 thread_local! {
-    /// Services under construction on this thread, per container. Kept outside
-    /// the frame chain so a resolution that starts a new chain on the same
-    /// thread, such as a factory resolving through a captured provider, still
-    /// sees the services it is nested in.
-    static CONSTRUCTING: RefCell<Vec<(*const Container, Key)>> = const { RefCell::new(Vec::new()) };
+    /// Registrations under construction on this thread. Kept outside the frame
+    /// chain so a resolution that starts a new chain on the same thread, such
+    /// as a factory resolving through a captured provider, still sees what it
+    /// is nested in. A registration belongs to exactly one container, so its
+    /// address identifies it.
+    static CONSTRUCTING: RefCell<Vec<(*const Registration, &'static str)>> =
+        const { RefCell::new(Vec::new()) };
 }
 
-/// Marks a service as under construction on this thread until dropped.
+/// Marks a registration as under construction on this thread until dropped.
 struct Constructing;
 
 impl Constructing {
-    /// Fails with the cycle path if `key` is already under construction in
-    /// `container` on this thread.
-    fn enter(container: &Container, key: Key) -> Result<Self, Vec<&'static str>> {
-        let container: *const Container = container;
+    /// Fails with the cycle path if `registration` is already under
+    /// construction on this thread.
+    fn enter(registration: &Registration) -> Result<Self, Vec<&'static str>> {
+        let this: *const Registration = registration;
         CONSTRUCTING.with_borrow_mut(|stack| {
-            let ours = stack
-                .iter()
-                .filter(|(owner, _)| ptr::eq(*owner, container))
-                .map(|&(_, service)| service);
-            if let Some(start) = ours.clone().position(|service| service == key) {
-                let mut path: Vec<_> = ours.skip(start).map(|service| service.name).collect();
-                path.push(key.name);
+            if let Some(start) = stack.iter().position(|&(entry, _)| ptr::eq(entry, this)) {
+                let mut path: Vec<_> = stack[start..].iter().map(|&(_, name)| name).collect();
+                path.push(registration.implementation);
                 return Err(path);
             }
-            stack.push((container, key));
+            stack.push((this, registration.implementation));
             Ok(Constructing)
         })
     }

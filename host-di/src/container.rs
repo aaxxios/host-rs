@@ -17,7 +17,8 @@ pub(crate) type ConstructFn =
 /// Registrations frozen at build, plus singleton storage.
 pub(crate) struct Container {
     registrations: Box<[Registration]>,
-    lookup: KeyMap<usize>,
+    /// Every registration of a service, in registration order.
+    lookup: KeyMap<Box<[usize]>>,
     pub(crate) scoped_count: usize,
     pub(crate) singletons: Slots,
     pub(crate) construction: ConstructionLock,
@@ -25,18 +26,10 @@ pub(crate) struct Container {
 
 impl Container {
     pub(crate) fn new(mut registrations: Vec<Registration>) -> Self {
-        let mut lookup = KeyMap::default();
-        for (index, registration) in registrations.iter().enumerate() {
-            lookup.insert(registration.key, index);
-        }
-
-        // Only the last registration of each service is reachable, so only
-        // those get storage.
+        // Every registration is reachable through `resolve_all`, so each gets
+        // its own storage, including ones a later registration overrides.
         let (mut singletons, mut scoped) = (0, 0);
-        let mut effective: Vec<_> = lookup.values().copied().collect();
-        effective.sort_unstable();
-        for &index in &effective {
-            let registration = &mut registrations[index];
+        for registration in &mut registrations {
             let count = match registration.lifetime {
                 Lifetime::Singleton => &mut singletons,
                 Lifetime::Scoped => &mut scoped,
@@ -47,14 +40,13 @@ impl Container {
         }
 
         let container = Self {
+            lookup: index_by_key(&registrations),
             registrations: registrations.into_boxed_slice(),
-            lookup,
             scoped_count: scoped,
             singletons: Slots::new(singletons),
             construction: ConstructionLock::default(),
         };
-        for &index in &effective {
-            let registration = &container.registrations[index];
+        for registration in &container.registrations {
             if let Source::Instance(instance) = &registration.source {
                 container
                     .singletons
@@ -64,11 +56,33 @@ impl Container {
         container
     }
 
+    /// The registration a single resolution uses: the last one.
     pub(crate) fn registration(&self, key: Key) -> Option<&Registration> {
+        self.registrations_of(key).last()
+    }
+
+    pub(crate) fn registrations_of(
+        &self,
+        key: Key,
+    ) -> impl DoubleEndedIterator<Item = &Registration> + ExactSizeIterator {
         self.lookup
             .get(&key)
-            .and_then(|&index| self.registrations.get(index))
+            .map_or(&[][..], |indices| &indices[..])
+            .iter()
+            .map(|&index| &self.registrations[index])
     }
+}
+
+/// Registration indices grouped by service, each group in registration order.
+pub(crate) fn index_by_key(registrations: &[Registration]) -> KeyMap<Box<[usize]>> {
+    let mut grouped: KeyMap<Vec<usize>> = KeyMap::default();
+    for (index, registration) in registrations.iter().enumerate() {
+        grouped.entry(registration.key).or_default().push(index);
+    }
+    grouped
+        .into_iter()
+        .map(|(key, indices)| (key, indices.into_boxed_slice()))
+        .collect()
 }
 
 /// Cached instances owned by the container or by a scope.
@@ -161,6 +175,13 @@ impl ServiceProvider {
         Resolver::root(&self.container).resolve()
     }
 
+    /// Resolves every registration of `T`, in registration order.
+    pub fn resolve_all<T: ?Sized + Send + Sync + 'static>(
+        &self,
+    ) -> Result<Vec<Arc<T>>, ResolveError> {
+        Resolver::root(&self.container).resolve_all()
+    }
+
     /// Creates a scope for resolving scoped services.
     pub fn create_scope(&self) -> Scope {
         Scope::new(Arc::clone(&self.container))
@@ -195,7 +216,7 @@ mod tests {
     struct Config;
 
     #[test]
-    fn overridden_registrations_get_no_storage() {
+    fn every_registration_gets_storage() {
         let mut services = ServiceCollection::new();
         services
             .add_scoped::<Leaf>()
@@ -205,8 +226,8 @@ mod tests {
         let provider = services.build().unwrap();
         let container = &provider.container;
 
-        assert_eq!(container.scoped_count, 1);
-        assert_eq!(container.singletons.slots.len(), 1);
-        assert_eq!(container.singletons.created.load(Ordering::Relaxed), 0);
+        assert_eq!(container.scoped_count, 2);
+        assert_eq!(container.singletons.slots.len(), 2);
+        assert_eq!(container.singletons.created.load(Ordering::Relaxed), 1);
     }
 }
