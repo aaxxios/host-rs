@@ -38,6 +38,16 @@ impl<T: ?Sized + Send + Sync + 'static> Inject for Arc<T> {
     }
 }
 
+impl<T: ?Sized + Send + Sync + 'static> Inject for Vec<Arc<T>> {
+    fn dependency() -> Dependency {
+        Dependency::all::<T>()
+    }
+
+    fn inject(resolver: &Resolver<'_>) -> Result<Self, ResolveError> {
+        resolver.resolve_all()
+    }
+}
+
 /// What a named constructor may return: `S` or `Result<S, E>`.
 #[doc(hidden)]
 #[diagnostic::on_unimplemented(

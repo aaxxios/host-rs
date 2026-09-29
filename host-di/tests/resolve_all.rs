@@ -1,5 +1,6 @@
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
+use host_di::__private::Inject;
 use host_di::{BuildIssue, Dependency, ResolveError, Resolver, Service, ServiceCollection};
 use std::io;
 use std::sync::Arc;
@@ -94,6 +95,37 @@ fn failing_member_fails_the_call_and_is_retried() {
     ));
     assert_eq!(names(&provider.resolve_all::<Tag>().unwrap()), ["a", "b"]);
     assert_eq!(calls.load(SeqCst), 2);
+}
+
+struct Mailer {
+    all: Vec<Arc<Tag>>,
+}
+
+impl Service for Mailer {
+    fn dependencies() -> Vec<Dependency> {
+        vec![<Vec<Arc<Tag>> as Inject>::dependency()]
+    }
+
+    fn construct(resolver: &Resolver<'_>) -> Result<Self, ResolveError> {
+        Ok(Mailer {
+            all: Inject::inject(resolver)?,
+        })
+    }
+}
+
+#[test]
+fn vec_dependency_is_injected() {
+    let mut services = ServiceCollection::new();
+    services
+        .add_singleton_with(|_| Ok(Tag("a")))
+        .add_singleton_with(|_| Ok(Tag("b")))
+        .add_transient::<Mailer>();
+    let provider = services.build().unwrap();
+
+    assert_eq!(
+        names(&provider.resolve::<Mailer>().unwrap().all),
+        ["a", "b"]
+    );
 }
 
 struct A;
