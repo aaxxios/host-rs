@@ -1,7 +1,8 @@
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic, unsafe_code)]
 
-use host_di::{Dependency, ResolveError, Resolver, Service, ServiceCollection};
+use host_di::{CastFrom, Dependency, ResolveError, Resolver, Service, ServiceCollection};
 use std::alloc::{GlobalAlloc, Layout, System};
+use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering::SeqCst};
 
 static ALLOCATIONS: AtomicUsize = AtomicUsize::new(0);
@@ -52,6 +53,16 @@ impl Service for Database {
 
     fn construct(_: &Resolver<'_>) -> Result<Self, ResolveError> {
         Ok(Database)
+    }
+}
+
+trait Store: Send + Sync {}
+
+impl Store for Database {}
+
+impl<T: Store + 'static> CastFrom<T> for dyn Store {
+    fn cast(from: Arc<T>) -> Arc<Self> {
+        from
     }
 }
 
@@ -121,6 +132,17 @@ fn resolving_existing_instances_does_not_allocate() {
         }
     });
     assert_eq!(scoped, 0, "resolving a built scoped instance");
+
+    let mut services = ServiceCollection::new();
+    services.add_singleton_as::<dyn Store, Database>();
+    let provider = services.build().unwrap();
+    provider.resolve::<dyn Store>().unwrap();
+    let as_trait = allocations_during(|| {
+        for _ in 0..1000 {
+            provider.resolve::<dyn Store>().unwrap();
+        }
+    });
+    assert_eq!(as_trait, 0, "resolving a built singleton as a trait");
 
     // Beyond one `Arc` per instance, a scope's storage is a single allocation
     // made on its first scoped resolution, however many instances it holds.

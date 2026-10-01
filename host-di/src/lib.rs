@@ -3,6 +3,7 @@
 
 #![warn(missing_docs, missing_debug_implementations)]
 
+mod abstraction;
 mod collection;
 mod container;
 mod error;
@@ -13,6 +14,7 @@ mod scope;
 mod service;
 mod sync;
 
+pub use abstraction::CastFrom;
 pub use collection::ServiceCollection;
 pub use container::ServiceProvider;
 pub use error::{BoxError, BuildError, BuildIssue, ResolveError};
@@ -24,7 +26,7 @@ pub use service::Service;
 #[doc(hidden)]
 pub mod __private {
     pub use crate::service::{Bound, Constructor, ConstructorOutput, Inject, constructor};
-    pub use crate::{Dependency, ResolveError, Resolver, Service};
+    pub use crate::{CastFrom, Dependency, ResolveError, Resolver, Service};
 }
 
 /// How long a resolved instance is reused.

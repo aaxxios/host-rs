@@ -2,9 +2,10 @@ use crate::container::{ConstructFn, Container, Erased};
 use crate::graph::find_cycles;
 use crate::key::Key;
 use crate::{
-    BoxError, BuildError, BuildIssue, Dependency, Lifetime, Resolver, Service, ServiceProvider,
+    BoxError, BuildError, BuildIssue, CastFrom, Dependency, Lifetime, Resolver, Service,
+    ServiceProvider,
 };
-use std::any::Any;
+use std::any::{Any, type_name};
 use std::fmt;
 use std::sync::Arc;
 
@@ -71,6 +72,38 @@ impl ServiceCollection {
         self.add::<T>(Lifetime::Transient)
     }
 
+    /// Registers `T` as an implementation of the trait object `I`, with one
+    /// instance shared for the life of the provider.
+    ///
+    /// `T` is reachable only as `I`; register it separately to resolve it by
+    /// its own type.
+    pub fn add_singleton_as<I, T>(&mut self) -> &mut Self
+    where
+        I: ?Sized + CastFrom<T> + Send + Sync + 'static,
+        T: Service,
+    {
+        self.add_service::<I, T>(Lifetime::Singleton, trait_cast::<I, T>())
+    }
+
+    /// Registers `T` as an implementation of `I`, with one instance per scope.
+    pub fn add_scoped_as<I, T>(&mut self) -> &mut Self
+    where
+        I: ?Sized + CastFrom<T> + Send + Sync + 'static,
+        T: Service,
+    {
+        self.add_service::<I, T>(Lifetime::Scoped, trait_cast::<I, T>())
+    }
+
+    /// Registers `T` as an implementation of `I`, constructed on every
+    /// resolution.
+    pub fn add_transient_as<I, T>(&mut self) -> &mut Self
+    where
+        I: ?Sized + CastFrom<T> + Send + Sync + 'static,
+        T: Service,
+    {
+        self.add_service::<I, T>(Lifetime::Transient, trait_cast::<I, T>())
+    }
+
     /// Registers a factory for `T` with one instance shared for the life of the
     /// provider.
     ///
@@ -106,11 +139,7 @@ impl ServiceCollection {
 
     /// Registers an already constructed singleton.
     pub fn add_singleton_instance<T: Send + Sync + 'static>(&mut self, instance: T) -> &mut Self {
-        self.push::<T>(
-            Lifetime::Singleton,
-            Source::Instance(Arc::new(instance)),
-            None,
-        )
+        self.push_unchecked::<T>(Lifetime::Singleton, Source::Instance(Arc::new(instance)))
     }
 
     /// Freezes the registrations into a provider.
@@ -130,13 +159,25 @@ impl ServiceCollection {
     }
 
     fn add<T: Service>(&mut self, lifetime: Lifetime) -> &mut Self {
+        self.add_service::<T, T>(lifetime, concrete_cast::<T>())
+    }
+
+    fn add_service<I: ?Sized + 'static, T: Service>(
+        &mut self,
+        lifetime: Lifetime,
+        cast: Cast,
+    ) -> &mut Self {
         let construct: ConstructFn =
             Arc::new(|resolver| T::construct(resolver).map(|service| Arc::new(service) as Erased));
-        self.push::<T>(
+        self.push(Registration {
+            key: Key::of::<I>(),
+            implementation: type_name::<T>(),
             lifetime,
-            Source::Construct(construct),
-            Some(T::dependencies),
-        )
+            source: Source::Construct(construct),
+            dependencies: Some(T::dependencies),
+            cast,
+            slot: 0,
+        })
     }
 
     fn add_factory<T, F>(&mut self, lifetime: Lifetime, factory: F) -> &mut Self
@@ -148,30 +189,46 @@ impl ServiceCollection {
             Ok(service) => Ok(Arc::new(service) as Erased),
             Err(error) => Err(resolver.failure(error)),
         });
-        self.push::<T>(lifetime, Source::Construct(construct), None)
+        self.push_unchecked::<T>(lifetime, Source::Construct(construct))
     }
 
-    fn push<T: Send + Sync + 'static>(
+    /// Registers a factory or instance whose dependencies are not declared.
+    fn push_unchecked<T: Send + Sync + 'static>(
         &mut self,
         lifetime: Lifetime,
         source: Source,
-        dependencies: Option<fn() -> Vec<Dependency>>,
     ) -> &mut Self {
         let key = Key::of::<T>();
-        self.registrations.push(Registration {
+        self.push(Registration {
             key,
             implementation: key.name,
             lifetime,
             source,
-            dependencies,
+            dependencies: None,
             cast: concrete_cast::<T>(),
             slot: 0,
-        });
+        })
+    }
+
+    fn push(&mut self, registration: Registration) -> &mut Self {
+        self.registrations.push(registration);
         self
     }
 }
 
-fn concrete_cast<T: Send + Sync + 'static>() -> Box<dyn Any + Send + Sync> {
+/// A boxed `fn(Erased) -> Option<Arc<I>>` for the registered service type `I`.
+type Cast = Box<dyn Any + Send + Sync>;
+
+fn trait_cast<I, T>() -> Cast
+where
+    I: ?Sized + CastFrom<T> + 'static,
+    T: Send + Sync + 'static,
+{
+    let cast: fn(Erased) -> Option<Arc<I>> = |instance| instance.downcast::<T>().ok().map(I::cast);
+    Box::new(cast)
+}
+
+fn concrete_cast<T: Send + Sync + 'static>() -> Cast {
     let cast: fn(Erased) -> Option<Arc<T>> = |instance| instance.downcast().ok();
     Box::new(cast)
 }

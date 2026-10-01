@@ -1,7 +1,9 @@
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
 use host_di::__private::Inject;
-use host_di::{BuildIssue, Dependency, ResolveError, Resolver, Service, ServiceCollection};
+use host_di::{
+    BuildIssue, CastFrom, Dependency, ResolveError, Resolver, Service, ServiceCollection,
+};
 use std::io;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering::SeqCst};
@@ -161,4 +163,87 @@ fn vec_dependency_cycle_is_rejected_at_build() {
     let err = services.build().err().unwrap();
 
     assert!(matches!(err.issues(), [BuildIssue::Cycle { .. }]));
+}
+
+trait Sender: Send + Sync {
+    fn name(&self) -> &'static str;
+}
+
+// What `#[abstraction]` generates.
+impl<T: Sender + 'static> CastFrom<T> for dyn Sender {
+    fn cast(from: Arc<T>) -> Arc<Self> {
+        from
+    }
+}
+
+struct Smtp;
+struct Ses;
+
+impl Sender for Smtp {
+    fn name(&self) -> &'static str {
+        "smtp"
+    }
+}
+
+impl Sender for Ses {
+    fn name(&self) -> &'static str {
+        "ses"
+    }
+}
+
+impl Service for Smtp {
+    fn dependencies() -> Vec<Dependency> {
+        Vec::new()
+    }
+
+    fn construct(_: &Resolver<'_>) -> Result<Self, ResolveError> {
+        Ok(Smtp)
+    }
+}
+
+impl Service for Ses {
+    fn dependencies() -> Vec<Dependency> {
+        Vec::new()
+    }
+
+    fn construct(_: &Resolver<'_>) -> Result<Self, ResolveError> {
+        Ok(Ses)
+    }
+}
+
+fn senders() -> ServiceCollection {
+    let mut services = ServiceCollection::new();
+    services
+        .add_singleton_as::<dyn Sender, Smtp>()
+        .add_singleton_as::<dyn Sender, Ses>();
+    services
+}
+
+#[test]
+fn trait_resolves_to_last_registration() {
+    let provider = senders().build().unwrap();
+
+    assert_eq!(provider.resolve::<dyn Sender>().unwrap().name(), "ses");
+}
+
+#[test]
+fn trait_resolve_all_is_registration_ordered() {
+    let provider = senders().build().unwrap();
+
+    let all = provider.resolve_all::<dyn Sender>().unwrap();
+
+    assert_eq!(
+        all.iter().map(|sender| sender.name()).collect::<Vec<_>>(),
+        ["smtp", "ses"]
+    );
+}
+
+#[test]
+fn registering_as_trait_does_not_register_concrete() {
+    let provider = senders().build().unwrap();
+
+    assert!(matches!(
+        provider.resolve::<Smtp>(),
+        Err(ResolveError::NotRegistered { .. })
+    ));
 }
