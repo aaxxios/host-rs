@@ -25,10 +25,10 @@
 
 pub use host_core::{Host, HostBuilder};
 pub use host_di::{
-    BoxError, BuildError, BuildIssue, Dependency, Lifetime, ResolveError, Resolver, Scope, Service,
-    ServiceCollection, ServiceProvider,
+    BoxError, BuildError, BuildIssue, CastFrom, Dependency, Lifetime, ResolveError, Resolver,
+    Scope, Service, ServiceCollection, ServiceProvider,
 };
-pub use host_macros::Service;
+pub use host_macros::{Service, abstraction};
 
 #[doc(hidden)]
 pub use host_di::__private;
