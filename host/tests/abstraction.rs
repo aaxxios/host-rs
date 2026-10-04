@@ -167,3 +167,80 @@ fn decorator_over_a_concrete_is_not_a_cycle() {
 
     assert_eq!(provider.resolve::<dyn Sender>().unwrap().name(), "smtp");
 }
+
+// Deliberately not an `#[abstraction]`, like a trait from another crate.
+trait Plain: Send + Sync {
+    fn id(&self) -> u32;
+}
+
+struct Fixed(u32);
+
+impl Plain for Fixed {
+    fn id(&self) -> u32 {
+        self.0
+    }
+}
+
+#[test]
+fn unmarked_trait_via_factory() {
+    let mut services = ServiceCollection::new();
+    services.add_singleton_as_with::<dyn Plain, _>(|_| Ok(Arc::new(Fixed(7))));
+    let provider = services.build().unwrap();
+
+    let first = provider.resolve::<dyn Plain>().unwrap();
+    let second = provider.resolve::<dyn Plain>().unwrap();
+
+    assert_eq!(first.id(), 7);
+    assert_eq!(addr(&first), addr(&second));
+}
+
+#[test]
+fn unmarked_trait_via_instance() {
+    let mut services = ServiceCollection::new();
+    services.add_singleton_instance_as::<dyn Plain>(Arc::new(Fixed(3)));
+
+    let plain = services.build().unwrap().resolve::<dyn Plain>().unwrap();
+
+    assert_eq!(plain.id(), 3);
+}
+
+#[test]
+fn transient_as_factory_runs_per_resolve() {
+    let mut services = ServiceCollection::new();
+    services.add_transient_as_with::<dyn Plain, _>(|_| Ok(Arc::new(Fixed(1))));
+    let provider = services.build().unwrap();
+
+    let first = provider.resolve::<dyn Plain>().unwrap();
+    let second = provider.resolve::<dyn Plain>().unwrap();
+
+    assert_ne!(addr(&first), addr(&second));
+}
+
+#[test]
+fn scoped_as_factory_runs_once_per_scope() {
+    let mut services = ServiceCollection::new();
+    services.add_scoped_as_with::<dyn Plain, _>(|_| Ok(Arc::new(Fixed(1))));
+    let provider = services.build().unwrap();
+    let scope = provider.create_scope();
+
+    let first = scope.resolve::<dyn Plain>().unwrap();
+    let second = scope.resolve::<dyn Plain>().unwrap();
+    let other = provider.create_scope().resolve::<dyn Plain>().unwrap();
+
+    assert_eq!(addr(&first), addr(&second));
+    assert_ne!(addr(&first), addr(&other));
+}
+
+#[test]
+fn factories_and_derived_mix_in_resolve_all() {
+    let mut services = ServiceCollection::new();
+    services
+        .add_singleton_as::<dyn Sender, Smtp>()
+        .add_singleton_as_with::<dyn Sender, _>(|_| Ok(Arc::new(Ses)));
+    let provider = services.build().unwrap();
+
+    assert_eq!(
+        names(&provider.resolve_all::<dyn Sender>().unwrap()),
+        ["smtp", "ses"]
+    );
+}

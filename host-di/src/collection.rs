@@ -142,6 +142,50 @@ impl ServiceCollection {
         self.push_unchecked::<T>(Lifetime::Singleton, Source::Instance(Arc::new(instance)))
     }
 
+    /// Registers a factory producing the trait object `I`, with one instance
+    /// shared for the life of the provider.
+    ///
+    /// Unlike [`add_singleton_as`](Self::add_singleton_as), the trait needs no
+    /// `#[abstraction]`, so traits from other crates can be registered.
+    pub fn add_singleton_as_with<I, F>(&mut self, factory: F) -> &mut Self
+    where
+        I: ?Sized + Send + Sync + 'static,
+        F: Fn(&Resolver<'_>) -> Result<Arc<I>, BoxError> + Send + Sync + 'static,
+    {
+        self.add_factory_as(Lifetime::Singleton, factory)
+    }
+
+    /// Registers a factory producing the trait object `I`, with one instance
+    /// per scope.
+    pub fn add_scoped_as_with<I, F>(&mut self, factory: F) -> &mut Self
+    where
+        I: ?Sized + Send + Sync + 'static,
+        F: Fn(&Resolver<'_>) -> Result<Arc<I>, BoxError> + Send + Sync + 'static,
+    {
+        self.add_factory_as(Lifetime::Scoped, factory)
+    }
+
+    /// Registers a factory producing the trait object `I`, run on every
+    /// resolution.
+    ///
+    /// The returned `Arc` is stored behind one more allocation, so each
+    /// resolution allocates once beyond what the factory does.
+    pub fn add_transient_as_with<I, F>(&mut self, factory: F) -> &mut Self
+    where
+        I: ?Sized + Send + Sync + 'static,
+        F: Fn(&Resolver<'_>) -> Result<Arc<I>, BoxError> + Send + Sync + 'static,
+    {
+        self.add_factory_as(Lifetime::Transient, factory)
+    }
+
+    /// Registers an already constructed trait object as a singleton.
+    pub fn add_singleton_instance_as<I>(&mut self, instance: Arc<I>) -> &mut Self
+    where
+        I: ?Sized + Send + Sync + 'static,
+    {
+        self.push_trait_object::<I>(Lifetime::Singleton, Source::Instance(Arc::new(instance)))
+    }
+
     /// Freezes the registrations into a provider.
     ///
     /// Fails if registered services depend on each other in a cycle.
@@ -206,6 +250,42 @@ impl ServiceCollection {
             source,
             dependencies: None,
             cast: concrete_cast::<T>(),
+            slot: 0,
+        })
+    }
+
+    fn add_factory_as<I, F>(&mut self, lifetime: Lifetime, factory: F) -> &mut Self
+    where
+        I: ?Sized + Send + Sync + 'static,
+        F: Fn(&Resolver<'_>) -> Result<Arc<I>, BoxError> + Send + Sync + 'static,
+    {
+        let construct: ConstructFn = Arc::new(move |resolver| match factory(resolver) {
+            Ok(service) => Ok(Arc::new(service) as Erased),
+            Err(error) => Err(resolver.failure(error)),
+        });
+        self.push_trait_object::<I>(lifetime, Source::Construct(construct))
+    }
+
+    /// Registers an `Arc<I>` stored as is, since an unsized `I` cannot be
+    /// erased directly.
+    fn push_trait_object<I>(&mut self, lifetime: Lifetime, source: Source) -> &mut Self
+    where
+        I: ?Sized + Send + Sync + 'static,
+    {
+        let key = Key::of::<I>();
+        let cast: fn(Erased) -> Option<Arc<I>> = |instance| {
+            instance
+                .downcast::<Arc<I>>()
+                .ok()
+                .map(|arc| Arc::clone(arc.as_ref()))
+        };
+        self.push(Registration {
+            key,
+            implementation: key.name,
+            lifetime,
+            source,
+            dependencies: None,
+            cast: Box::new(cast),
             slot: 0,
         })
     }
