@@ -6,8 +6,11 @@ error[E0277]: `String` cannot be injected
   |
   = help: the trait `host::__private::Inject` is not implemented for `String`
   = note: fields must be `Arc<T>`; use `#[service(constructor = ...)]` for other fields
-help: the trait `host::__private::Inject` is implemented for `Arc<T>`
+help: the following other types implement trait `host::__private::Inject`
  --> $WORKSPACE/host-di/src/service.rs
   |
   | impl<T: ?Sized + Send + Sync + 'static> Inject for Arc<T> {
-  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `Arc<T>`
+...
+  | impl<T: ?Sized + Send + Sync + 'static> Inject for Vec<Arc<T>> {
+  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `Vec<Arc<T>>`

@@ -1,0 +1,5 @@
+error: `#[abstraction]` applies to traits only
+ --> tests/ui/abstraction_on_struct.rs:4:1
+  |
+4 | struct Sender;
+  | ^^^^^^^^^^^^^^
