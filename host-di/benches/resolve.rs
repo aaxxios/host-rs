@@ -1,7 +1,9 @@
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic, missing_docs)]
 
 use criterion::{Criterion, criterion_group, criterion_main};
-use host_di::{Dependency, ResolveError, Resolver, Service, ServiceCollection, ServiceProvider};
+use host_di::{
+    CastFrom, Dependency, ResolveError, Resolver, Service, ServiceCollection, ServiceProvider,
+};
 use std::hint::black_box;
 use std::sync::Arc;
 
@@ -45,12 +47,25 @@ impl Service for Transaction {
     }
 }
 
+trait Store: Send + Sync {}
+
+impl Store for Database {}
+
+impl<T: Store + 'static> CastFrom<T> for dyn Store {
+    fn cast(from: Arc<T>) -> Arc<Self> {
+        from
+    }
+}
+
 fn provider() -> ServiceProvider {
     let mut services = ServiceCollection::new();
     services
         .add_singleton::<Database>()
         .add_transient::<Repository>()
-        .add_scoped::<Transaction>();
+        .add_scoped::<Transaction>()
+        .add_singleton_as::<dyn Store, Database>()
+        .add_singleton_as::<dyn Store, Database>()
+        .add_singleton_as::<dyn Store, Database>();
     services.build().unwrap()
 }
 
@@ -79,10 +94,28 @@ fn scope_resolve_scoped(c: &mut Criterion) {
     });
 }
 
+fn resolve_trait_singleton(c: &mut Criterion) {
+    let provider = provider();
+    provider.resolve::<dyn Store>().unwrap();
+    c.bench_function("resolve_trait_singleton", |b| {
+        b.iter(|| black_box(provider.resolve::<dyn Store>().unwrap()));
+    });
+}
+
+fn resolve_all_three(c: &mut Criterion) {
+    let provider = provider();
+    provider.resolve_all::<dyn Store>().unwrap();
+    c.bench_function("resolve_all_three", |b| {
+        b.iter(|| black_box(provider.resolve_all::<dyn Store>().unwrap()));
+    });
+}
+
 criterion_group!(
     benches,
     resolve_singleton,
     resolve_transient,
-    scope_resolve_scoped
+    scope_resolve_scoped,
+    resolve_trait_singleton,
+    resolve_all_three
 );
 criterion_main!(benches);
