@@ -1,4 +1,4 @@
-use proc_macro2::TokenStream;
+use proc_macro2::{Group, TokenStream, TokenTree};
 use quote::{quote, quote_spanned};
 use syn::meta::parser;
 use syn::parse::Parser;
@@ -48,6 +48,11 @@ pub(crate) fn expand(attr: TokenStream, item: TokenStream) -> syn::Result<TokenS
     let assert_send_sync = quote_spanned! {ident.span()=>
         assert_send_sync::<dyn #ident #trait_generics>();
     };
+    // The check is a free function, where `Self` means nothing; inside the
+    // trait it meant the trait object.
+    let object = quote!((dyn #ident #trait_generics));
+    let check_generics = replace_self(quote!(#trait_impl_generics), &object);
+    let check_where = replace_self(quote!(#trait_where), &object);
 
     Ok(quote! {
         #item
@@ -66,9 +71,25 @@ pub(crate) fn expand(attr: TokenStream, item: TokenStream) -> syn::Result<TokenS
             }
 
             #[allow(dead_code)]
-            fn check #trait_impl_generics () #trait_where {
+            fn check #check_generics () #check_where {
                 #assert_send_sync
             }
         };
     })
+}
+
+fn replace_self(tokens: TokenStream, with: &TokenStream) -> TokenStream {
+    tokens
+        .into_iter()
+        .flat_map(|token| match token {
+            TokenTree::Ident(ident) if ident == "Self" => with.clone(),
+            TokenTree::Group(group) => {
+                let mut replaced =
+                    Group::new(group.delimiter(), replace_self(group.stream(), with));
+                replaced.set_span(group.span());
+                TokenTree::Group(replaced).into()
+            }
+            other => other.into(),
+        })
+        .collect()
 }

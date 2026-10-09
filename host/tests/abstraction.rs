@@ -244,3 +244,27 @@ fn factories_and_derived_mix_in_resolve_all() {
         ["smtp", "ses"]
     );
 }
+
+#[abstraction]
+trait Spelled
+where
+    Self: Send + Sync,
+{
+    fn word(&self) -> &'static str;
+}
+
+impl Spelled for Smtp {
+    fn word(&self) -> &'static str {
+        "where"
+    }
+}
+
+#[test]
+fn send_sync_may_be_written_as_where_self() {
+    let mut services = ServiceCollection::new();
+    services.add_singleton_as::<dyn Spelled, Smtp>();
+
+    let spelled = services.build().unwrap().resolve::<dyn Spelled>().unwrap();
+
+    assert_eq!(spelled.word(), "where");
+}
