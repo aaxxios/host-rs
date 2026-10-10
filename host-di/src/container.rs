@@ -4,7 +4,6 @@ use crate::scope::Scope;
 use crate::sync::ConstructionLock;
 use crate::{Lifetime, ResolveError, Resolver};
 use std::any::Any;
-use std::cmp::Reverse;
 use std::fmt;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, OnceLock};
@@ -87,24 +86,31 @@ pub(crate) fn index_by_key(registrations: &[Registration]) -> KeyMap<Box<[usize]
 
 /// Cached instances owned by the container or by a scope.
 ///
-/// Creation order is stamped into each slot so the whole store stays one
-/// allocation; instances are released in reverse of that order.
+/// Filled slots form a list from the newest instance back to the oldest,
+/// threaded through the slots themselves, so the store stays one allocation
+/// and is released in reverse creation order without sorting.
 pub(crate) struct Slots {
     slots: Box<[Slot]>,
-    created: AtomicUsize,
+    newest: AtomicUsize,
 }
 
-#[derive(Default)]
 struct Slot {
     value: OnceLock<Erased>,
-    order: AtomicUsize,
+    previous: AtomicUsize,
 }
+
+const NONE: usize = usize::MAX;
 
 impl Slots {
     pub(crate) fn new(len: usize) -> Self {
         Self {
-            slots: (0..len).map(|_| Slot::default()).collect(),
-            created: AtomicUsize::new(0),
+            slots: (0..len)
+                .map(|_| Slot {
+                    value: OnceLock::new(),
+                    previous: AtomicUsize::new(NONE),
+                })
+                .collect(),
+            newest: AtomicUsize::new(NONE),
         }
     }
 
@@ -116,26 +122,20 @@ impl Slots {
     }
 
     /// Stores a new instance. Callers hold the owner's construction lock, so
-    /// stamps follow creation order.
+    /// the list is only ever extended by one thread at a time.
     pub(crate) fn fill(&self, index: usize, instance: Erased) {
         if let Some(slot) = self.slots.get(index) {
             if slot.value.set(instance).is_ok() {
-                let order = self.created.fetch_add(1, Ordering::Relaxed);
-                slot.order.store(order, Ordering::Relaxed);
+                let previous = self.newest.swap(index, Ordering::Relaxed);
+                slot.previous.store(previous, Ordering::Relaxed);
             }
         }
     }
 
     fn release(&mut self) {
-        let count = self.created.load(Ordering::Relaxed);
-        let mut filled = Vec::with_capacity(count);
-        filled.extend(
-            self.slots
-                .iter_mut()
-                .filter(|slot| slot.value.get().is_some()),
-        );
-        filled.sort_unstable_by_key(|slot| Reverse(slot.order.load(Ordering::Relaxed)));
-        for slot in filled {
+        let mut next = self.newest.swap(NONE, Ordering::Relaxed);
+        while let Some(slot) = self.slots.get_mut(next) {
+            next = *slot.previous.get_mut();
             drop(slot.value.take());
         }
     }
@@ -228,6 +228,6 @@ mod tests {
 
         assert_eq!(container.scoped_count, 2);
         assert_eq!(container.singletons.slots.len(), 2);
-        assert_eq!(container.singletons.created.load(Ordering::Relaxed), 1);
+        assert_eq!(container.singletons.newest.load(Ordering::Relaxed), 0);
     }
 }

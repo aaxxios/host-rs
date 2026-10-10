@@ -42,6 +42,10 @@ impl Default for TypeIdHasher {
 }
 
 impl Hasher for TypeIdHasher {
+    fn finish(&self) -> u64 {
+        self.0
+    }
+
     fn write(&mut self, bytes: &[u8]) {
         for &byte in bytes {
             self.0 ^= u64::from(byte);
@@ -51,10 +55,6 @@ impl Hasher for TypeIdHasher {
 
     fn write_u64(&mut self, n: u64) {
         self.0 = n;
-    }
-
-    fn finish(&self) -> u64 {
-        self.0
     }
 }
 
