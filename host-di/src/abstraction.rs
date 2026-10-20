@@ -7,7 +7,7 @@ use std::sync::Arc;
 /// no generic unsizing, so each trait needs this one impl.
 #[diagnostic::on_unimplemented(
     message = "`{T}` cannot be registered as `{Self}`",
-    note = "mark the trait with `#[abstraction]` and implement it for `{T}`"
+    note = "`{Self}` must be a trait object whose trait has `#[abstraction]` and is implemented for `{T}`"
 )]
 pub trait CastFrom<T> {
     /// Upcasts `from` to the trait object.

@@ -6,7 +6,7 @@ error[E0277]: `P` cannot be registered as `dyn Plain`
    |              |
    |              required by a bound introduced by this call
    |
-   = note: mark the trait with `#[abstraction]` and implement it for `P`
+   = note: `dyn Plain` must be a trait object whose trait has `#[abstraction]` and is implemented for `P`
 note: required by a bound in `ServiceCollection::add_singleton_as`
   --> $WORKSPACE/host-di/src/collection.rs
    |
