@@ -20,7 +20,7 @@ pub trait Service: Sized + Send + Sync + 'static {
 #[diagnostic::on_unimplemented(
     message = "`{Self}` cannot be injected",
     label = "not a dependency",
-    note = "fields must be `Arc<T>`; use `#[service(constructor = ...)]` for other fields"
+    note = "fields must be `Arc<T>` or `Vec<Arc<T>>`; use `#[service(constructor = ...)]` for other fields"
 )]
 pub trait Inject: Sized {
     fn dependency() -> Dependency;
