@@ -1,5 +1,5 @@
 use crate::container::{ConstructFn, Container, Erased};
-use crate::graph::{find_captive, find_cycles, find_missing};
+use crate::graph::Graph;
 use crate::key::Key;
 use crate::{
     BoxError, BuildError, BuildIssue, CastFrom, Dependency, Lifetime, Resolver, Service,
@@ -329,21 +329,24 @@ impl ServiceCollection {
     /// Fails if registered services depend on each other in a cycle, or if an
     /// enabled check finds a problem; every problem found is reported.
     pub fn build(self) -> Result<ServiceProvider, BuildError> {
-        let registrations = &self.registrations;
-        let mut issues: Vec<BuildIssue> = find_cycles(registrations)
+        let graph = Graph::new(&self.registrations);
+        let mut issues: Vec<BuildIssue> = graph
+            .cycles()
             .into_iter()
             .map(|path| BuildIssue::Cycle { path })
             .collect();
         if self.validation.dependencies {
             issues.extend(
-                find_missing(registrations)
+                graph
+                    .missing()
                     .into_iter()
                     .map(|path| BuildIssue::MissingDependency { path }),
             );
         }
         if self.validation.scopes {
             issues.extend(
-                find_captive(registrations)
+                graph
+                    .captive()
                     .into_iter()
                     .map(|path| BuildIssue::CaptiveDependency { path }),
             );
