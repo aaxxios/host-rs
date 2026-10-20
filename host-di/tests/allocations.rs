@@ -2,29 +2,42 @@
 
 use host_di::{CastFrom, Dependency, ResolveError, Resolver, Service, ServiceCollection};
 use std::alloc::{GlobalAlloc, Layout, System};
+use std::cell::Cell;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicUsize, Ordering::SeqCst};
+use std::sync::atomic::{AtomicBool, Ordering::SeqCst};
+use std::thread;
+use std::time::Duration;
 
-static ALLOCATIONS: AtomicUsize = AtomicUsize::new(0);
+thread_local! {
+    // Per thread so allocations by the test harness or other tests running
+    // concurrently never land in a measurement.
+    static ALLOCATIONS: Cell<usize> = const { Cell::new(0) };
+}
+
+fn count() {
+    // A const-initialised `Cell` has no destructor, so this cannot fail or
+    // allocate; `try_with` only guards against use during thread teardown.
+    let _ = ALLOCATIONS.try_with(|count| count.set(count.get() + 1));
+}
 
 struct Counting;
 
 // SAFETY: every method forwards to `System` with the caller's arguments unchanged.
 unsafe impl GlobalAlloc for Counting {
     unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
-        ALLOCATIONS.fetch_add(1, SeqCst);
+        count();
         // SAFETY: forwarded from the caller, who upholds `GlobalAlloc::alloc`'s contract.
         unsafe { System.alloc(layout) }
     }
 
     unsafe fn alloc_zeroed(&self, layout: Layout) -> *mut u8 {
-        ALLOCATIONS.fetch_add(1, SeqCst);
+        count();
         // SAFETY: as for `alloc`.
         unsafe { System.alloc_zeroed(layout) }
     }
 
     unsafe fn realloc(&self, ptr: *mut u8, layout: Layout, new_size: usize) -> *mut u8 {
-        ALLOCATIONS.fetch_add(1, SeqCst);
+        count();
         // SAFETY: `ptr` and `layout` come from this allocator, which is `System`.
         unsafe { System.realloc(ptr, layout, new_size) }
     }
@@ -39,9 +52,9 @@ unsafe impl GlobalAlloc for Counting {
 static GLOBAL: Counting = Counting;
 
 fn allocations_during(f: impl FnOnce()) -> usize {
-    let before = ALLOCATIONS.load(SeqCst);
+    let before = ALLOCATIONS.with(Cell::get);
     f();
-    ALLOCATIONS.load(SeqCst) - before
+    ALLOCATIONS.with(Cell::get) - before
 }
 
 struct Database;
@@ -96,7 +109,25 @@ macro_rules! scoped {
 
 scoped!(S1, S2, S3, S4, S5);
 
-// One test per binary: the counter is process-wide.
+#[test]
+fn counts_only_the_measuring_thread() {
+    let stop = Arc::new(AtomicBool::new(false));
+    let noise = thread::spawn({
+        let stop = Arc::clone(&stop);
+        move || {
+            while !stop.load(SeqCst) {
+                drop(Vec::<u8>::with_capacity(64));
+            }
+        }
+    });
+
+    let measured = allocations_during(|| thread::sleep(Duration::from_millis(50)));
+    stop.store(true, SeqCst);
+    noise.join().unwrap();
+
+    assert_eq!(measured, 0);
+}
+
 #[test]
 fn resolving_existing_instances_does_not_allocate() {
     let mut services = ServiceCollection::new();
