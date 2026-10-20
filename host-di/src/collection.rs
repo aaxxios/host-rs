@@ -379,24 +379,12 @@ impl ServiceCollection {
         })
     }
 
-    fn create_factory_constr<F, T>(factory: F) -> ConstructFn
-    where
-        F: Fn(&Resolver<'_>) -> Result<T, BoxError> + Send + Sync + 'static,
-        T: Send + Sync + 'static,
-    {
-        Arc::new(move |resolver| match factory(resolver) {
-            Ok(service) => Ok(Arc::new(service) as Erased),
-            Err(error) => Err(resolver.failure(error)),
-        })
-    }
-
     fn add_factory<T, F>(&mut self, lifetime: Lifetime, factory: F) -> &mut Self
     where
         T: Send + Sync + 'static,
         F: Fn(&Resolver<'_>) -> Result<T, BoxError> + Send + Sync + 'static,
     {
-        let construct: ConstructFn = Self::create_factory_constr(factory);
-        self.push_unchecked::<T>(lifetime, Source::Construct(construct))
+        self.push_unchecked::<T>(lifetime, Source::Construct(factory_construct(factory)))
     }
 
     /// Registers a factory or instance whose dependencies are not declared.
@@ -422,8 +410,7 @@ impl ServiceCollection {
         I: ?Sized + Send + Sync + 'static,
         F: Fn(&Resolver<'_>) -> Result<Arc<I>, BoxError> + Send + Sync + 'static,
     {
-        let construct: ConstructFn = Self::create_factory_constr(factory);
-        self.push_trait_object::<I>(lifetime, Source::Construct(construct))
+        self.push_trait_object::<I>(lifetime, Source::Construct(factory_construct(factory)))
     }
 
     /// Registers an `Arc<I>` stored as is, since an unsized `I` cannot be
@@ -454,6 +441,19 @@ impl ServiceCollection {
         self.registrations.push(registration);
         self
     }
+}
+
+/// Wraps a factory as a constructor, passing a dependency's resolution error
+/// through unchanged.
+fn factory_construct<T, F>(factory: F) -> ConstructFn
+where
+    T: Send + Sync + 'static,
+    F: Fn(&Resolver<'_>) -> Result<T, BoxError> + Send + Sync + 'static,
+{
+    Arc::new(move |resolver| match factory(resolver) {
+        Ok(service) => Ok(Arc::new(service) as Erased),
+        Err(error) => Err(resolver.failure(error)),
+    })
 }
 
 /// A boxed `fn(Erased) -> Option<Arc<I>>` for the registered service type `I`.
