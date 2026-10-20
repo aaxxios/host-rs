@@ -1,5 +1,5 @@
 use crate::container::{ConstructFn, Container, Erased};
-use crate::graph::{find_cycles, find_missing};
+use crate::graph::{find_captive, find_cycles, find_missing};
 use crate::key::Key;
 use crate::{
     BoxError, BuildError, BuildIssue, CastFrom, Dependency, Lifetime, Resolver, Service,
@@ -26,6 +26,7 @@ pub struct ServiceCollection {
 #[derive(Debug, Default)]
 struct Validation {
     dependencies: bool,
+    scopes: bool,
 }
 
 pub(crate) struct Registration {
@@ -206,6 +207,17 @@ impl ServiceCollection {
         self
     }
 
+    /// Rejects at build any singleton that depends on a scoped service,
+    /// directly or through transients.
+    ///
+    /// Without it, such a singleton fails to resolve with
+    /// [`ResolveError::ScopedFromRoot`](crate::ResolveError::ScopedFromRoot);
+    /// it never silently keeps one scope's instance.
+    pub fn validate_scopes(&mut self) -> &mut Self {
+        self.validation.scopes = true;
+        self
+    }
+
     /// Freezes the registrations into a provider.
     ///
     /// Fails if registered services depend on each other in a cycle, or if an
@@ -221,6 +233,13 @@ impl ServiceCollection {
                 find_missing(registrations)
                     .into_iter()
                     .map(|path| BuildIssue::MissingDependency { path }),
+            );
+        }
+        if self.validation.scopes {
+            issues.extend(
+                find_captive(registrations)
+                    .into_iter()
+                    .map(|path| BuildIssue::CaptiveDependency { path }),
             );
         }
         if !issues.is_empty() {

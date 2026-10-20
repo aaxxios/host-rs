@@ -1,37 +1,14 @@
+use crate::Lifetime;
 use crate::collection::Registration;
 use crate::container::index_by_key;
 
 /// Finds dependency cycles among registrations.
 ///
-/// A single dependency points at the last registration of its service; a
-/// dependency on all of them points at every registration.
-///
 /// Each cycle is reported once, rotated to start at its earliest registration
 /// and closed by repeating that service. Factories and instances declare no
 /// dependencies, so cycles through them are left to resolution time.
 pub(crate) fn find_cycles(registrations: &[Registration]) -> Vec<Vec<&'static str>> {
-    let by_key = index_by_key(registrations);
-    let edges: Vec<Vec<usize>> = registrations
-        .iter()
-        .map(|registration| {
-            let dependencies = registration
-                .dependencies
-                .map(|dependencies| dependencies())
-                .unwrap_or_default();
-            let mut targets = Vec::new();
-            for dependency in dependencies {
-                let Some(indices) = by_key.get(&dependency.key()) else {
-                    continue;
-                };
-                if dependency.is_all() {
-                    targets.extend_from_slice(indices);
-                } else {
-                    targets.extend(indices.last());
-                }
-            }
-            targets
-        })
-        .collect();
+    let edges = edges(registrations);
 
     let mut state = vec![Visit::New; registrations.len()];
     let mut cycles: Vec<Vec<usize>> = Vec::new();
@@ -115,4 +92,73 @@ pub(crate) fn find_missing(registrations: &[Registration]) -> Vec<Vec<&'static s
         }
     }
     missing
+}
+
+/// Singletons that reach a scoped service directly or through transients, as
+/// `[singleton, transient…, scoped]`, in registration order. A singleton
+/// reached along the way is not followed: it is checked as its own root.
+pub(crate) fn find_captive(registrations: &[Registration]) -> Vec<Vec<&'static str>> {
+    let edges = edges(registrations);
+    let mut captive = Vec::new();
+    for (root, registration) in registrations.iter().enumerate() {
+        if registration.lifetime != Lifetime::Singleton || registration.dependencies.is_none() {
+            continue;
+        }
+        let mut visited = vec![false; registrations.len()];
+        visited[root] = true;
+        let mut stack = vec![(root, 0)];
+        while let Some(&mut (node, ref mut next)) = stack.last_mut() {
+            let Some(&target) = edges[node].get(*next) else {
+                stack.pop();
+                continue;
+            };
+            *next += 1;
+            if visited[target] {
+                continue;
+            }
+            visited[target] = true;
+            let dependency = &registrations[target];
+            match dependency.lifetime {
+                Lifetime::Scoped => {
+                    let mut path: Vec<_> = stack
+                        .iter()
+                        .map(|&(n, _)| registrations[n].implementation)
+                        .collect();
+                    path.push(dependency.implementation);
+                    captive.push(path);
+                }
+                Lifetime::Transient => stack.push((target, 0)),
+                Lifetime::Singleton => {}
+            }
+        }
+    }
+    captive
+}
+
+/// Dependency edges between registrations: a single dependency points at the
+/// last registration of its service, a dependency on all of them at each one.
+/// Factories and instances declare no dependencies, so they have no edges.
+fn edges(registrations: &[Registration]) -> Vec<Vec<usize>> {
+    let by_key = index_by_key(registrations);
+    registrations
+        .iter()
+        .map(|registration| {
+            let dependencies = registration
+                .dependencies
+                .map(|dependencies| dependencies())
+                .unwrap_or_default();
+            let mut targets = Vec::new();
+            for dependency in dependencies {
+                let Some(indices) = by_key.get(&dependency.key()) else {
+                    continue;
+                };
+                if dependency.is_all() {
+                    targets.extend_from_slice(indices);
+                } else {
+                    targets.extend(indices.last());
+                }
+            }
+            targets
+        })
+        .collect()
 }

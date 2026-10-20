@@ -82,7 +82,8 @@ impl BuildError {
         Self { issues }
     }
 
-    /// Every problem found, in registration order.
+    /// Every problem found: cycles, then missing dependencies, then captive
+    /// dependencies, each in registration order.
     pub fn issues(&self) -> &[BuildIssue] {
         &self.issues
     }
@@ -119,6 +120,14 @@ pub enum BuildIssue {
         /// The service and its missing dependency.
         path: Vec<&'static str>,
     },
+    /// The singleton first in `path` reaches the scoped service last in it,
+    /// directly or through transients, and would hold on to one scope's
+    /// instance. Reported only with
+    /// [`validate_scopes`](crate::ServiceCollection::validate_scopes).
+    CaptiveDependency {
+        /// The singleton, any transients in between, and the scoped service.
+        path: Vec<&'static str>,
+    },
 }
 
 impl fmt::Display for BuildIssue {
@@ -130,6 +139,10 @@ impl fmt::Display for BuildIssue {
             }
             Self::MissingDependency { path } => {
                 f.write_str("dependency not registered: ")?;
+                write_path(f, path)
+            }
+            Self::CaptiveDependency { path } => {
+                f.write_str("singleton depends on scoped service: ")?;
                 write_path(f, path)
             }
         }
