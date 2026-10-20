@@ -298,3 +298,27 @@ fn singleton_on_a_scoped_factory_is_reported() {
         }]
     );
 }
+
+service!(MissingTwice => Dependency::on::<Missing>(), Dependency::on::<Missing>());
+
+#[test]
+fn a_dependency_declared_twice_is_reported_once() {
+    let mut services = ServiceCollection::new();
+    services
+        .validate_dependencies()
+        .add_singleton::<MissingTwice>();
+
+    assert_eq!(services.build().err().unwrap().issues().len(), 1);
+}
+
+#[test]
+fn a_captive_singleton_registered_twice_is_reported_once() {
+    let mut services = ServiceCollection::new();
+    services
+        .validate_scopes()
+        .add_scoped::<Tx>()
+        .add_singleton::<Cache>()
+        .add_singleton::<Cache>();
+
+    assert_eq!(services.build().err().unwrap().issues().len(), 1);
+}

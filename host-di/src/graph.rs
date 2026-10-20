@@ -77,7 +77,8 @@ fn normalize(mut cycle: Vec<usize>) -> Vec<usize> {
 }
 
 /// Declared single dependencies that have no registration, as
-/// `[service, dependency]`, in registration order.
+/// `[service, dependency]`, in registration order. Identical findings, from a
+/// repeated dependency or registration, are reported once.
 pub(crate) fn find_missing(registrations: &[Registration]) -> Vec<Vec<&'static str>> {
     let by_key = index_by_key(registrations);
     let mut missing = Vec::new();
@@ -86,8 +87,12 @@ pub(crate) fn find_missing(registrations: &[Registration]) -> Vec<Vec<&'static s
             continue;
         };
         for dependency in dependencies() {
-            if !dependency.is_all() && !by_key.contains_key(&dependency.key()) {
-                missing.push(vec![registration.implementation, dependency.type_name()]);
+            let path = vec![registration.implementation, dependency.type_name()];
+            if !dependency.is_all()
+                && !by_key.contains_key(&dependency.key())
+                && !missing.contains(&path)
+            {
+                missing.push(path);
             }
         }
     }
@@ -125,7 +130,9 @@ pub(crate) fn find_captive(registrations: &[Registration]) -> Vec<Vec<&'static s
                         .map(|&(n, _)| registrations[n].implementation)
                         .collect();
                     path.push(dependency.implementation);
-                    captive.push(path);
+                    if !captive.contains(&path) {
+                        captive.push(path);
+                    }
                 }
                 Lifetime::Transient => stack.push((target, 0)),
                 Lifetime::Singleton => {}
