@@ -57,7 +57,8 @@ impl Container {
 
     /// The registration a single resolution uses: the last one.
     pub(crate) fn registration(&self, key: Key) -> Option<&Registration> {
-        self.registrations_of(key).last()
+        let &index = self.lookup.get(&key)?.last()?;
+        self.registrations.get(index)
     }
 
     pub(crate) fn registrations_of(
