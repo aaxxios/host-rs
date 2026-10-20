@@ -1,6 +1,7 @@
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
 use host::{BuildIssue, ResolveError, Service, ServiceCollection, abstraction};
+use std::any::type_name;
 use std::sync::Arc;
 
 #[abstraction]
@@ -267,4 +268,18 @@ fn send_sync_may_be_written_as_where_self() {
     let spelled = services.build().unwrap().resolve::<dyn Spelled>().unwrap();
 
     assert_eq!(spelled.word(), "where");
+}
+
+#[test]
+fn scoped_member_is_named_when_resolved_from_root() {
+    let mut services = ServiceCollection::new();
+    services
+        .add_singleton_as::<dyn Sender, Smtp>()
+        .add_scoped_as::<dyn Sender, Ses>();
+    let provider = services.build().unwrap();
+
+    let err = provider.resolve_all::<dyn Sender>().err().unwrap();
+
+    assert!(matches!(&err, ResolveError::ScopedFromRoot { path }
+        if path == &[type_name::<Ses>()]));
 }

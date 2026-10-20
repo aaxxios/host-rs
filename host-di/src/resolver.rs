@@ -129,9 +129,11 @@ impl<'a> Resolver<'a> {
 
     fn scoped_instance(&self, registration: &Registration) -> Result<Erased, ResolveError> {
         let Some(scope) = self.scope else {
-            return Err(ResolveError::ScopedFromRoot {
-                path: self.path_to(registration.key),
-            });
+            // Name the implementation: when resolving a set, the service type
+            // alone doesn't say which member is scoped.
+            let mut path = self.path();
+            path.push(registration.implementation);
+            return Err(ResolveError::ScopedFromRoot { path });
         };
         self.cached(
             registration,
