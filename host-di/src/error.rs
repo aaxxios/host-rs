@@ -112,6 +112,13 @@ pub enum BuildIssue {
         /// Dependency path.
         path: Vec<&'static str>,
     },
+    /// The first service in `path` depends on the second, which has no
+    /// registration. Reported only with
+    /// [`validate_dependencies`](crate::ServiceCollection::validate_dependencies).
+    MissingDependency {
+        /// The service and its missing dependency.
+        path: Vec<&'static str>,
+    },
 }
 
 impl fmt::Display for BuildIssue {
@@ -119,6 +126,10 @@ impl fmt::Display for BuildIssue {
         match self {
             Self::Cycle { path } => {
                 f.write_str("dependency cycle: ")?;
+                write_path(f, path)
+            }
+            Self::MissingDependency { path } => {
+                f.write_str("dependency not registered: ")?;
                 write_path(f, path)
             }
         }

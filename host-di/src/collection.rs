@@ -1,5 +1,5 @@
 use crate::container::{ConstructFn, Container, Erased};
-use crate::graph::find_cycles;
+use crate::graph::{find_cycles, find_missing};
 use crate::key::Key;
 use crate::{
     BoxError, BuildError, BuildIssue, CastFrom, Dependency, Lifetime, Resolver, Service,
@@ -19,6 +19,13 @@ use std::sync::Arc;
 #[derive(Debug, Default)]
 pub struct ServiceCollection {
     registrations: Vec<Registration>,
+    validation: Validation,
+}
+
+/// Opt-in checks run by `build`.
+#[derive(Debug, Default)]
+struct Validation {
+    dependencies: bool,
 }
 
 pub(crate) struct Registration {
@@ -188,18 +195,36 @@ impl ServiceCollection {
         self.push_trait_object::<I>(Lifetime::Singleton, Source::Instance(Arc::new(instance)))
     }
 
+    /// Rejects at build any declared dependency that has no registration.
+    ///
+    /// Without it, a missing dependency surfaces when the service is first
+    /// resolved. A `Vec<Arc<T>>` dependency is never missing, since it may be
+    /// empty, and factories are not checked because their dependencies are
+    /// not declared.
+    pub fn validate_dependencies(&mut self) -> &mut Self {
+        self.validation.dependencies = true;
+        self
+    }
+
     /// Freezes the registrations into a provider.
     ///
-    /// Fails if registered services depend on each other in a cycle.
+    /// Fails if registered services depend on each other in a cycle, or if an
+    /// enabled check finds a problem; every problem found is reported.
     pub fn build(self) -> Result<ServiceProvider, BuildError> {
-        let cycles = find_cycles(&self.registrations);
-        if !cycles.is_empty() {
-            return Err(BuildError::new(
-                cycles
+        let registrations = &self.registrations;
+        let mut issues: Vec<BuildIssue> = find_cycles(registrations)
+            .into_iter()
+            .map(|path| BuildIssue::Cycle { path })
+            .collect();
+        if self.validation.dependencies {
+            issues.extend(
+                find_missing(registrations)
                     .into_iter()
-                    .map(|path| BuildIssue::Cycle { path })
-                    .collect(),
-            ));
+                    .map(|path| BuildIssue::MissingDependency { path }),
+            );
+        }
+        if !issues.is_empty() {
+            return Err(BuildError::new(issues));
         }
         Ok(ServiceProvider::new(Container::new(self.registrations)))
     }

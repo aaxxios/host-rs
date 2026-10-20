@@ -98,3 +98,21 @@ fn normalize(mut cycle: Vec<usize>) -> Vec<usize> {
     }
     cycle
 }
+
+/// Declared single dependencies that have no registration, as
+/// `[service, dependency]`, in registration order.
+pub(crate) fn find_missing(registrations: &[Registration]) -> Vec<Vec<&'static str>> {
+    let by_key = index_by_key(registrations);
+    let mut missing = Vec::new();
+    for registration in registrations {
+        let Some(dependencies) = registration.dependencies else {
+            continue;
+        };
+        for dependency in dependencies() {
+            if !dependency.is_all() && !by_key.contains_key(&dependency.key()) {
+                missing.push(vec![registration.implementation, dependency.type_name()]);
+            }
+        }
+    }
+    missing
+}
