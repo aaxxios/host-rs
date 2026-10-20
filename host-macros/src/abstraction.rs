@@ -77,11 +77,11 @@ pub(crate) fn expand(attr: TokenStream, item: TokenStream) -> syn::Result<TokenS
     let check_generics = replace_self(check_generics.to_token_stream(), &as_self);
     let check_where = replace_self(check_where.to_token_stream(), &as_self);
 
-    generics.params.push(parse_quote!(__Impl));
+    generics.params.push(parse_quote!(__HostImpl));
     generics
         .make_where_clause()
         .predicates
-        .push(parse_quote!(__Impl: #trait_path + 'static));
+        .push(parse_quote!(__HostImpl: #trait_path + 'static));
     let (impl_generics, _, where_clause) = generics.split_for_impl();
     let impl_generics = replace_self(impl_generics.to_token_stream(), &as_self);
     let where_clause = replace_self(where_clause.to_token_stream(), &as_self);
@@ -95,8 +95,8 @@ pub(crate) fn expand(attr: TokenStream, item: TokenStream) -> syn::Result<TokenS
         #item
 
         #[automatically_derived]
-        impl #impl_generics #private::CastFrom<__Impl> for #object #where_clause {
-            fn cast(from: ::std::sync::Arc<__Impl>) -> ::std::sync::Arc<Self> {
+        impl #impl_generics #private::CastFrom<__HostImpl> for #object #where_clause {
+            fn cast(from: ::std::sync::Arc<__HostImpl>) -> ::std::sync::Arc<Self> {
                 from
             }
         }

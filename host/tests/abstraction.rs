@@ -357,3 +357,28 @@ fn failing_member_is_named_and_retried() {
         ["smtp", "flaky"]
     );
 }
+
+#[abstraction]
+#[allow(non_camel_case_types)]
+trait Keyed<__Impl>: Send + Sync {
+    fn keyed(&self) -> bool {
+        true
+    }
+}
+
+impl Keyed<u8> for Smtp {}
+
+#[test]
+fn trait_parameters_do_not_collide_with_generated_names() {
+    let mut services = ServiceCollection::new();
+    services.add_singleton_as::<dyn Keyed<u8>, Smtp>();
+
+    assert!(
+        services
+            .build()
+            .unwrap()
+            .resolve::<dyn Keyed<u8>>()
+            .unwrap()
+            .keyed()
+    );
+}
