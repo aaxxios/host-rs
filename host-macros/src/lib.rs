@@ -32,8 +32,10 @@ pub fn derive_service(input: TokenStream) -> TokenStream {
 /// Apply once to the trait; any implementation can then be registered with
 /// `add_singleton_as::<dyn Trait, Impl>()` and friends. The trait must be
 /// `Send + Sync`, since services are shared across threads, and cannot have
-/// lifetime parameters. `#[abstraction(crate = path)]` names the `host` crate
-/// when it is renamed or re-exported.
+/// lifetime parameters. Associated types are fixed at registration, as in
+/// `dyn Handler<Output = u32>`; generic associated types are not supported.
+/// `#[abstraction(crate = path)]` names the `host` crate when it is renamed
+/// or re-exported.
 #[proc_macro_attribute]
 pub fn abstraction(attr: TokenStream, item: TokenStream) -> TokenStream {
     abstraction::expand(attr.into(), item.into())

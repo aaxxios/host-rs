@@ -283,3 +283,36 @@ fn scoped_member_is_named_when_resolved_from_root() {
     assert!(matches!(&err, ResolveError::ScopedFromRoot { path }
         if path == &[type_name::<Ses>()]));
 }
+
+#[abstraction]
+trait Handler: Send + Sync {
+    type Output: Send;
+
+    fn handle(&self) -> Self::Output;
+}
+
+#[derive(Service)]
+struct Doubler;
+
+impl Handler for Doubler {
+    type Output = u32;
+
+    fn handle(&self) -> u32 {
+        2
+    }
+}
+
+#[test]
+fn associated_types_are_bound_in_the_trait_object() {
+    let mut services = ServiceCollection::new();
+    services.add_singleton_as::<dyn Handler<Output = u32>, Doubler>();
+    let provider = services.build().unwrap();
+
+    assert_eq!(
+        provider
+            .resolve::<dyn Handler<Output = u32>>()
+            .unwrap()
+            .handle(),
+        2
+    );
+}
