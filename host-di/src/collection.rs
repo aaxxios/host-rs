@@ -146,7 +146,9 @@ impl ServiceCollection {
     /// shared for the life of the provider.
     ///
     /// Unlike [`add_singleton_as`](Self::add_singleton_as), the trait needs no
-    /// `#[abstraction]`, so traits from other crates can be registered.
+    /// `#[abstraction]`, so traits from other crates can be registered. The
+    /// concrete type behind the returned `Arc` is not known, so errors and
+    /// logs name these registrations by `I`.
     pub fn add_singleton_as_with<I, F>(&mut self, factory: F) -> &mut Self
     where
         I: ?Sized + Send + Sync + 'static,
