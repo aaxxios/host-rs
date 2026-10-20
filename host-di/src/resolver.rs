@@ -52,6 +52,9 @@ impl<'a> Resolver<'a> {
     }
 
     /// Resolves a dependency of the service under construction.
+    ///
+    /// When `T` is registered more than once, the last registration wins; use
+    /// [`resolve_all`](Self::resolve_all) for every one.
     pub fn resolve<T: ?Sized + Send + Sync + 'static>(&self) -> Result<Arc<T>, ResolveError> {
         let key = Key::of::<T>();
         let Some(registration) = self.container.registration(key) else {

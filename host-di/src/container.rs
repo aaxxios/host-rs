@@ -172,6 +172,9 @@ impl ServiceProvider {
     }
 
     /// Resolves a singleton or transient service.
+    ///
+    /// When `T` is registered more than once, the last registration wins; use
+    /// [`resolve_all`](Self::resolve_all) for every one.
     pub fn resolve<T: ?Sized + Send + Sync + 'static>(&self) -> Result<Arc<T>, ResolveError> {
         Resolver::root(&self.container).resolve()
     }
