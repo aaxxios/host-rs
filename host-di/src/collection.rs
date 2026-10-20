@@ -112,6 +112,83 @@ impl ServiceCollection {
         self.add_service::<I, T>(Lifetime::Transient, trait_cast::<I, T>())
     }
 
+    /// Whether anything is registered as `T`.
+    ///
+    /// Covers every form of registration, so it can guard any of them, for
+    /// example to add a default only when the application hasn't.
+    pub fn contains<T: ?Sized + 'static>(&self) -> bool {
+        let key = Key::of::<T>();
+        self.registrations
+            .iter()
+            .any(|registration| registration.key == key)
+    }
+
+    /// Like [`add_singleton`](Self::add_singleton), but only if nothing is
+    /// registered as `T` yet.
+    pub fn try_add_singleton<T: Service>(&mut self) -> &mut Self {
+        if self.contains::<T>() {
+            return self;
+        }
+        self.add_singleton::<T>()
+    }
+
+    /// Like [`add_scoped`](Self::add_scoped), but only if nothing is
+    /// registered as `T` yet.
+    pub fn try_add_scoped<T: Service>(&mut self) -> &mut Self {
+        if self.contains::<T>() {
+            return self;
+        }
+        self.add_scoped::<T>()
+    }
+
+    /// Like [`add_transient`](Self::add_transient), but only if nothing is
+    /// registered as `T` yet.
+    pub fn try_add_transient<T: Service>(&mut self) -> &mut Self {
+        if self.contains::<T>() {
+            return self;
+        }
+        self.add_transient::<T>()
+    }
+
+    /// Like [`add_singleton_as`](Self::add_singleton_as), but only if nothing
+    /// is registered as `I` yet, whatever its implementation.
+    pub fn try_add_singleton_as<I, T>(&mut self) -> &mut Self
+    where
+        I: ?Sized + CastFrom<T> + Send + Sync + 'static,
+        T: Service,
+    {
+        if self.contains::<I>() {
+            return self;
+        }
+        self.add_singleton_as::<I, T>()
+    }
+
+    /// Like [`add_scoped_as`](Self::add_scoped_as), but only if nothing is
+    /// registered as `I` yet.
+    pub fn try_add_scoped_as<I, T>(&mut self) -> &mut Self
+    where
+        I: ?Sized + CastFrom<T> + Send + Sync + 'static,
+        T: Service,
+    {
+        if self.contains::<I>() {
+            return self;
+        }
+        self.add_scoped_as::<I, T>()
+    }
+
+    /// Like [`add_transient_as`](Self::add_transient_as), but only if nothing
+    /// is registered as `I` yet.
+    pub fn try_add_transient_as<I, T>(&mut self) -> &mut Self
+    where
+        I: ?Sized + CastFrom<T> + Send + Sync + 'static,
+        T: Service,
+    {
+        if self.contains::<I>() {
+            return self;
+        }
+        self.add_transient_as::<I, T>()
+    }
+
     /// Registers a factory for `T` with one instance shared for the life of the
     /// provider.
     ///
