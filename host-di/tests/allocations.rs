@@ -199,3 +199,38 @@ fn resolving_existing_instances_does_not_allocate() {
     });
     assert_eq!(five - one, 4, "scope bookkeeping per instance");
 }
+
+#[test]
+fn resolving_a_built_trait_object_from_a_factory_does_not_allocate() {
+    let mut services = ServiceCollection::new();
+    services.add_singleton_as_with::<dyn Store, _>(|_| Ok(Arc::new(Database)));
+    let provider = services.build().unwrap();
+    provider.resolve::<dyn Store>().unwrap();
+
+    let allocations = allocations_during(|| {
+        for _ in 0..1000 {
+            provider.resolve::<dyn Store>().unwrap();
+        }
+    });
+
+    assert_eq!(allocations, 0);
+}
+
+#[test]
+fn resolve_all_allocates_only_its_vec() {
+    let mut services = ServiceCollection::new();
+    services
+        .add_singleton_as::<dyn Store, Database>()
+        .add_singleton_as::<dyn Store, Database>()
+        .add_singleton_as_with::<dyn Store, _>(|_| Ok(Arc::new(Database)));
+    let provider = services.build().unwrap();
+    provider.resolve_all::<dyn Store>().unwrap();
+
+    let allocations = allocations_during(|| {
+        for _ in 0..1000 {
+            provider.resolve_all::<dyn Store>().unwrap();
+        }
+    });
+
+    assert_eq!(allocations, 1000);
+}
