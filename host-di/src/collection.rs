@@ -193,7 +193,7 @@ impl ServiceCollection {
     }
 
     /// Like [`add_scoped_as`](Self::add_scoped_as), but only if nothing is
-    /// registered as `I` yet.
+    /// registered as `I` yet, whatever its implementation.
     pub fn try_add_scoped_as<I, T>(&mut self) -> &mut Self
     where
         I: ?Sized + CastFrom<T> + Send + Sync + 'static,
@@ -206,7 +206,7 @@ impl ServiceCollection {
     }
 
     /// Like [`add_transient_as`](Self::add_transient_as), but only if nothing
-    /// is registered as `I` yet.
+    /// is registered as `I` yet, whatever its implementation.
     pub fn try_add_transient_as<I, T>(&mut self) -> &mut Self
     where
         I: ?Sized + CastFrom<T> + Send + Sync + 'static,
