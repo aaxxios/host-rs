@@ -12,10 +12,39 @@ use std::sync::Arc;
 /// Services registered for an application, frozen into a [`ServiceProvider`]
 /// by [`build`](Self::build).
 ///
-/// Registering a type again replaces the earlier registration. Singletons are
+/// Registering a type again adds another registration: a single resolve uses
+/// the last one, and `resolve_all` returns every one in order. Singletons are
 /// constructed outside any scope, so a singleton that depends on a scoped
 /// service fails to resolve rather than holding on to one scope's instance.
 /// Transients are constructed in the scope that requested them.
+///
+/// # Validation
+///
+/// [`build`](Self::build) always rejects dependency cycles. Two more checks
+/// are opt-in, and every problem found is reported in one [`BuildError`]:
+///
+/// ```
+/// # use host_di::{Dependency, ResolveError, Resolver, Service};
+/// use host_di::{BuildIssue, ServiceCollection};
+/// # struct Pool;
+/// # struct Database;
+/// # impl Service for Database {
+/// #     fn dependencies() -> Vec<Dependency> {
+/// #         vec![Dependency::on::<Pool>()]
+/// #     }
+/// #     fn construct(_: &Resolver<'_>) -> Result<Self, ResolveError> {
+/// #         Ok(Database)
+/// #     }
+/// # }
+/// let mut services = ServiceCollection::new();
+/// services
+///     .validate_dependencies()
+///     .validate_scopes()
+///     .add_singleton::<Database>(); // needs a Pool, which isn't registered
+///
+/// let err = services.build().unwrap_err();
+/// assert!(matches!(err.issues(), [BuildIssue::MissingDependency { .. }]));
+/// ```
 #[derive(Debug, Default)]
 pub struct ServiceCollection {
     registrations: Vec<Registration>,
