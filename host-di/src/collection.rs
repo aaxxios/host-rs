@@ -226,15 +226,23 @@ impl ServiceCollection {
         })
     }
 
+    fn create_factory_constr<F, T>(factory: F) -> ConstructFn
+    where
+        F: Fn(&Resolver<'_>) -> Result<T, BoxError> + Send + Sync + 'static,
+        T: Send + Sync + 'static,
+    {
+        Arc::new(move |resolver| match factory(resolver) {
+            Ok(service) => Ok(Arc::new(service) as Erased),
+            Err(error) => Err(resolver.failure(error)),
+        })
+    }
+
     fn add_factory<T, F>(&mut self, lifetime: Lifetime, factory: F) -> &mut Self
     where
         T: Send + Sync + 'static,
         F: Fn(&Resolver<'_>) -> Result<T, BoxError> + Send + Sync + 'static,
     {
-        let construct: ConstructFn = Arc::new(move |resolver| match factory(resolver) {
-            Ok(service) => Ok(Arc::new(service) as Erased),
-            Err(error) => Err(resolver.failure(error)),
-        });
+        let construct: ConstructFn = Self::create_factory_constr(factory);
         self.push_unchecked::<T>(lifetime, Source::Construct(construct))
     }
 
@@ -261,10 +269,7 @@ impl ServiceCollection {
         I: ?Sized + Send + Sync + 'static,
         F: Fn(&Resolver<'_>) -> Result<Arc<I>, BoxError> + Send + Sync + 'static,
     {
-        let construct: ConstructFn = Arc::new(move |resolver| match factory(resolver) {
-            Ok(service) => Ok(Arc::new(service) as Erased),
-            Err(error) => Err(resolver.failure(error)),
-        });
+        let construct: ConstructFn = Self::create_factory_constr(factory);
         self.push_trait_object::<I>(lifetime, Source::Construct(construct))
     }
 
