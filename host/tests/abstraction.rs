@@ -2,7 +2,9 @@
 
 use host::{BuildIssue, ResolveError, Service, ServiceCollection, abstraction};
 use std::any::type_name;
+use std::io;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering::SeqCst};
 
 #[abstraction]
 trait Sender: Send + Sync {
@@ -314,5 +316,44 @@ fn associated_types_are_bound_in_the_trait_object() {
             .unwrap()
             .handle(),
         2
+    );
+}
+
+static FLAKY_CALLS: AtomicUsize = AtomicUsize::new(0);
+
+#[derive(Service)]
+#[service(constructor = connect)]
+struct Flaky;
+
+impl Flaky {
+    fn connect() -> Result<Self, io::Error> {
+        if FLAKY_CALLS.fetch_add(1, SeqCst) == 0 {
+            return Err(io::Error::other("not ready"));
+        }
+        Ok(Flaky)
+    }
+}
+
+impl Sender for Flaky {
+    fn name(&self) -> &'static str {
+        "flaky"
+    }
+}
+
+#[test]
+fn failing_member_is_named_and_retried() {
+    let mut services = ServiceCollection::new();
+    services
+        .add_singleton_as::<dyn Sender, Smtp>()
+        .add_singleton_as::<dyn Sender, Flaky>();
+    let provider = services.build().unwrap();
+
+    let err = provider.resolve_all::<dyn Sender>().err().unwrap();
+
+    assert!(matches!(&err, ResolveError::Construction { path, .. }
+        if path == &[type_name::<Flaky>()]));
+    assert_eq!(
+        names(&provider.resolve_all::<dyn Sender>().unwrap()),
+        ["smtp", "flaky"]
     );
 }
