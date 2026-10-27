@@ -6,7 +6,7 @@ members = ["hosting", "hosting-core", "hosting-di", "hosting-macros"]
 edition = "2024"
 rust-version = "1.85"
 license = "MIT"
-repository = "https://github.com/aaxxios/host-rs"
+repository = "https://github.com/aaxxios/hosting-rs"
 
 [workspace.dependencies]
 proc-macro2 = "1.0.107"
