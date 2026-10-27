@@ -1,0 +1,22 @@
+name: Feature request
+description: A capability you need, ideally one .NET's hosting or DI already has.
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What you are trying to do and why the current API makes it hard.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed API
+      description: How you would like registration or resolution to look.
+      render: rust
+  - type: input
+    id: dotnet
+    attributes:
+      label: .NET equivalent
+      description: The Microsoft.Extensions API this corresponds to, if any.
