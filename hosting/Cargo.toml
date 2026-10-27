@@ -4,11 +4,16 @@ version = "0.1.0"
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
+repository.workspace = true
+description = "Dependency injection and application hosting modeled on Microsoft.Extensions.Hosting"
+readme = "../README.md"
+keywords = ["dependency-injection", "di", "ioc", "hosting", "container"]
+categories = ["rust-patterns", "development-tools"]
 
 [dependencies]
-hosting-core = { path = "../hosting-core" }
-hosting-di = { path = "../hosting-di" }
-hosting-macros = { path = "../hosting-macros" }
+hosting-core = { path = "../hosting-core", version = "0.1.0" }
+hosting-di = { path = "../hosting-di", version = "0.1.0" }
+hosting-macros = { path = "../hosting-macros", version = "0.1.0" }
 
 [dev-dependencies]
 trybuild = "1"
