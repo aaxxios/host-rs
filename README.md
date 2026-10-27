@@ -181,6 +181,8 @@ error wording changes between releases:
 cargo +1.99.0 test -p hosting --test ui -- --ignored
 ```
 
+See [CONTRIBUTING.md](CONTRIBUTING.md) before opening a pull request.
+
 ## License
 
 MIT. See [LICENSE](LICENSE).
