@@ -1,11 +1,20 @@
 # hosting
 
+[![crates.io](https://img.shields.io/crates/v/hosting.svg)](https://crates.io/crates/hosting)
+[![docs.rs](https://img.shields.io/docsrs/hosting)](https://docs.rs/hosting)
+[![ci](https://github.com/aaxxios/hosting-rs/actions/workflows/ci.yml/badge.svg)](https://github.com/aaxxios/hosting-rs/actions/workflows/ci.yml)
+[![msrv](https://img.shields.io/badge/rustc-1.85+-blue.svg)](#development)
+
 Dependency injection and application hosting for Rust, modeled on
 `Microsoft.Extensions.DependencyInjection` and `Microsoft.Extensions.Hosting`
 from .NET.
 
 Services are plain structs. You describe their dependencies once, register
 them with a lifetime, and the container builds them on request.
+
+```sh
+cargo add hosting
+```
 
 ```rust
 use hosting::{Service, ServiceCollection};
@@ -32,8 +41,8 @@ let repository = scope.resolve::<Repository>()?;
 ## Status
 
 Early development. The dependency injection container is usable; the host
-lifecycle and configuration are not written yet. The API will change and the
-crates are not published.
+lifecycle and configuration are not written yet. Expect breaking changes
+between 0.x releases.
 
 | Area | State |
 |---|---|
