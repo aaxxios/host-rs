@@ -1,0 +1,20 @@
+[package]
+name = "hosting"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+hosting-core = { path = "../hosting-core" }
+hosting-di = { path = "../hosting-di" }
+hosting-macros = { path = "../hosting-macros" }
+
+[dev-dependencies]
+trybuild = "1"
+
+[features]
+logging = ["hosting-di/logging"]
+
+[lints]
+workspace = true

@@ -1,4 +1,4 @@
-# host
+# hosting
 
 Dependency injection and application hosting for Rust, modeled on
 `Microsoft.Extensions.DependencyInjection` and `Microsoft.Extensions.Hosting`
@@ -8,7 +8,7 @@ Services are plain structs. You describe their dependencies once, register
 them with a lifetime, and the container builds them on request.
 
 ```rust
-use host::{Service, ServiceCollection};
+use hosting::{Service, ServiceCollection};
 use std::sync::Arc;
 
 #[derive(Service)]
@@ -96,7 +96,7 @@ it. A single resolve returns the last registration; `resolve_all` and
 `Vec<Arc<dyn Trait>>` return all of them in registration order.
 
 ```rust
-use host::abstraction;
+use hosting::abstraction;
 
 #[abstraction]
 trait Notifier: Send + Sync {
@@ -150,10 +150,10 @@ that fails is not cached, so the next resolution tries again.
 
 | Crate | Contents |
 |---|---|
-| `host` | The crate to depend on. Re-exports everything below. |
-| `host-di` | Service collection, provider, scopes and resolution. |
-| `host-macros` | `#[derive(Service)]` and `#[abstraction]`. |
-| `host-core` | `Host` and `HostBuilder`. |
+| `hosting` | The crate to depend on. Re-exports everything below. |
+| `hosting-di` | Service collection, provider, scopes and resolution. |
+| `hosting-macros` | `#[derive(Service)]` and `#[abstraction]`. |
+| `hosting-core` | `Host` and `HostBuilder`. |
 
 ## Development
 
@@ -162,14 +162,14 @@ The minimum supported Rust version is 1.85.
 ```sh
 cargo test --workspace --all-features
 cargo clippy --workspace --all-targets --all-features -- -D warnings
-cargo bench -p host-di --bench resolve
+cargo bench -p hosting-di --bench resolve
 ```
 
 Compile-fail tests for macro diagnostics are pinned to one compiler, since
 error wording changes between releases:
 
 ```sh
-cargo +1.99.0 test -p host --test ui -- --ignored
+cargo +1.99.0 test -p hosting --test ui -- --ignored
 ```
 
 ## License

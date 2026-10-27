@@ -1,0 +1,14 @@
+error[E0277]: `fn() -> Option<Database> {Database::connect}` cannot construct `Database`
+ --> tests/ui/bad_constructor_return.rs:4:25
+  |
+4 | #[service(constructor = connect)]
+  |                         ^^^^^^^ not a service constructor
+  |
+  = help: the trait `hosting::__private::Constructor<Database, _>` is not implemented for fn item `fn() -> Option<Database> {Database::connect}`
+  = note: a service constructor takes injectable parameters such as `Arc<T>` and returns `Database` or `Result<Database, E>`
+  = note: constructors are synchronous; move async setup into a hosted service
+note: required by a bound in `hosting::__private::constructor`
+ --> $WORKSPACE/hosting-di/src/service.rs
+  |
+  | pub fn constructor<S, Args, F: Constructor<S, Args>>(f: &F) -> Bound<'_, F, S> {
+  |                                ^^^^^^^^^^^^^^^^^^^^ required by this bound in `constructor`

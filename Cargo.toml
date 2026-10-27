@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["host", "host-core", "host-di", "host-macros"]
+members = ["hosting", "hosting-core", "hosting-di", "hosting-macros"]
 
 [workspace.package]
 edition = "2024"

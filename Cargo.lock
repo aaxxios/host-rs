@@ -193,24 +193,24 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ed5909b6e89a2db4456e54cd5f673791d7eca6732202bbf2a9cc504fe2f9b84a"
 
 [[package]]
-name = "host"
+name = "hosting"
 version = "0.1.0"
 dependencies = [
- "host-core",
- "host-di",
- "host-macros",
+ "hosting-core",
+ "hosting-di",
+ "hosting-macros",
  "trybuild",
 ]
 
 [[package]]
-name = "host-core"
+name = "hosting-core"
 version = "0.1.0"
 dependencies = [
- "host-di",
+ "hosting-di",
 ]
 
 [[package]]
-name = "host-di"
+name = "hosting-di"
 version = "0.1.0"
 dependencies = [
  "criterion",
@@ -218,7 +218,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "host-macros"
+name = "hosting-macros"
 version = "0.1.0"
 dependencies = [
  "proc-macro2",
